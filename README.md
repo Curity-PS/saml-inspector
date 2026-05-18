@@ -1,337 +1,116 @@
 # SAML Inspector
 
-SAML Inspector is a diagnostic web application for testing and debugging SAML 2.0 authentication flows with Curity Identity Server acting as a SAML Identity Provider (IDP).
+A diagnostic web app for testing and debugging SAML 2.0 authentication flows against a Curity Identity Server. Use it to inspect every SAML message on the wire, test your IdP's signature handling, and exercise both directions of SAML 2 SSO from one tool.
 
-## Features
+It drives **two flows**:
 
-- **SAML Service Provider (SP)** implementation using Passport.js with @node-saml/passport-saml
-- **Auto-configuration from metadata** - automatically fetch and configure IDP settings from metadata URL
-- **Real-time SAML message visualization** - decode and inspect SAML requests/responses with syntax-highlighted XML
-- **Configurable IDP settings** - update configuration via .env or UI with metadata import
-- **Message decoder** - manually decode Base64-encoded SAML messages
-- **Unsolicited SAML Response tester** - hand-crafts, signs and POSTs an unsolicited SAML 2.0 Response at a Curity SAML2 authenticator and drives the OAuth code exchange end-to-end. Single-click button renders the access / id / refresh tokens, decoded id_token claims, HTTP trace and the sent XML. Includes form fields to flip the audience, NameID, OAuth client, scope, and sign-assertion / sign-response toggles. See [Unsolicited SAML Response test](#unsolicited-saml-response-test) below.
-
-## Prerequisites
-
-- Node.js (v18 or higher)
-- npm
-- Curity Identity Server configured as a SAML IDP
-- Basic understanding of SAML 2.0 protocol
+- **SP-Initiated** — standard "Sign In with SAML" via Passport + `@node-saml/passport-saml`.
+- **Unsolicited (IdP-Initiated)** — hand-crafts, signs and POSTs an unsolicited SAML 2.0 Response at a Curity `saml2-sp` authenticator, then drives the OAuth code exchange end-to-end.
 
 ## Quick Start
 
-### 1. Install Dependencies
-
 ```bash
+# 1. Install (server + client; postinstall installs client/ too)
 npm install
-```
 
-This installs both the server and client dependencies — the root `postinstall` script automatically runs `npm install` inside `client/`.
-
-### 2. Configure Environment Variables
-
-Create a `.env` file in the root directory:
-
-```bash
+# 2. Configure
 cp .env.example .env
-```
+# edit .env — at minimum point SAML_IDP_METADATA_URL at your Curity, e.g.:
+#   SAML_IDP_METADATA_URL=https://localhost:8443/saml/sso/metadata
 
-**Option 1: Auto-configure from IDP metadata URL (Recommended):**
-
-Simply provide the IDP metadata URL and the application will automatically fetch the entry point and certificate at startup:
-
-```env
-# SP Server Configuration
-PORT=3001
-
-# SAML Service Provider (SP) Configuration
-SAML_SP_ISSUER=http://localhost:3001/saml/metadata
-SAML_SP_CALLBACK_URL=http://localhost:3001/saml/callback
-
-# SAML Identity Provider (IDP) Configuration - Curity Server
-SAML_IDP_METADATA_URL=https://localhost:8443/saml/sso/metadata
-
-# IDP Logout URL - Curity Identity Server logout endpoint with redirect back to SP
-SAML_IDP_LOGOUT_REDIRECT_URL=https://localhost:8443/dev/authn/authenticate/logout?redirect_uri=http://localhost:3001/saml/logout/callback
-
-# Certificate Validation
-SAML_IDP_SKIP_CERT_VALIDATION=false
-```
-
-**Option 2: Manual configuration (without metadata URL):**
-
-If you prefer to configure manually or metadata is not available:
-
-```env
-# SP Server Configuration
-PORT=3001
-
-# SAML Service Provider (SP) Configuration
-SAML_SP_ISSUER=http://localhost:3001/saml/metadata
-SAML_SP_CALLBACK_URL=http://localhost:3001/saml/callback
-
-# SAML Identity Provider (IDP) Configuration - Manual
-SAML_IDP_ENTRY_POINT=https://localhost:8443/saml/sso
-
-# IDP Certificate (from Curity metadata KeyDescriptor)
-# Copy certificate content without BEGIN/END markers and line breaks
-SAML_IDP_CERT=MIID...your-certificate-here...
-
-# IDP Logout URL - Curity Identity Server logout endpoint with redirect back to SP
-SAML_IDP_LOGOUT_REDIRECT_URL=https://localhost:8443/dev/authn/authenticate/logout?redirect_uri=http://localhost:3001/saml/logout/callback
-
-# Certificate Validation
-SAML_IDP_SKIP_CERT_VALIDATION=false
-```
-
-### 3. Run the Application
-
-Start both the backend server and React frontend:
-
-```bash
+# 3. Run
 npm run dev
 ```
 
-The application will be available at:
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:3001
-- SP Metadata: http://localhost:3001/saml/metadata
+Then open **http://localhost:3000**. Frontend is on `:3000`, backend on `:3001`, and SP metadata is served at `:3001/saml/metadata`.
 
-### 4. Other useful scripts
-
-```bash
-npm run typecheck      # tsc --noEmit on server + client
-npm test               # Vitest one-shot (server unit + integration tests)
-npm run test:watch     # Vitest in watch mode
-npm run test:coverage  # Vitest with v8 coverage report
-npm run build          # Produce server/dist (tsc) and client/dist (Vite)
-npm start              # Run the compiled production server
-```
-
-## Curity Identity Server Configuration
-
-SAML Inspector talks to a Curity Identity Server in two different roles, one per flow, and each needs its own piece of Curity-side config:
-
-| Flow | What you register on Curity | Where |
-|---|---|---|
-| **SP-Initiated** | A SAML 2 *Service Provider* on the `saml-idp` profile — Curity acts as the IdP, this app is the SP. | Reference XML below. |
-| **Unsolicited** | A SAML 2 *Authenticator* (`saml2-sp`) trust on the IdP signing cert, plus an OAuth *client* with our redirect URI. | See [Reference OAuth client config (XML)](#reference-oauth-client-config-xml) further down. |
-
-For background, see [Curity's SAML IDP profile docs](https://curity.io/docs/identity-server/profiles/saml-idp-profile/).
-
-### Reference SAML SP config (XML)
-
-Minimal `service-provider` definition for the **SP-Initiated** flow.
+**Prerequisites:** Node.js v18+, npm, a Curity Identity Server reachable from this host, and a working understanding of SAML 2.0.
 
 <details>
-<summary>Click to expand <code>service-provider</code> XML</summary>
+<summary>Manual IdP configuration (no metadata URL)</summary>
 
-```xml
-<config xmlns="http://tail-f.com/ns/config/1.0">
-  <profiles xmlns="https://curity.se/ns/conf/base">
-    <profile>
-      <id>saml-idp</id>
-      <type xmlns:si="https://curity.se/ns/conf/profile/saml-idp">si:saml-idp-service</type>
-      <settings>
-        <saml-idp-service xmlns="https://curity.se/ns/conf/profile/saml-idp">
-          <service-providers>
-            <service-provider>
-              <id>http://localhost:3001/saml/metadata</id>
-              <assertion>
-                <audience>http://localhost:3001/saml/metadata</audience>
-              </assertion>
-              <request-bindings>
-                <redirect/>
-                <post/>
-              </request-bindings>
-              <assertion-consumer-service>
-                <index>1</index>
-                <url>http://localhost:3001/saml/callback</url>
-                <protocol-binding>urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST</protocol-binding>
-              </assertion-consumer-service>
-              <user-authentication>
-                <allowed-authenticators>username</allowed-authenticators>
-                <force-authn>true</force-authn>
-              </user-authentication>
-            </service-provider>
-          </service-providers>
-        </saml-idp-service>
-      </settings>
-    </profile>
-  </profiles>
-</config>
+If your IdP doesn't expose metadata, set the entry point and certificate directly:
+
+```env
+SAML_IDP_ENTRY_POINT=https://localhost:8443/saml/sso
+SAML_IDP_CERT=MIID...   # IdP cert, single-line base64, no BEGIN/END markers
+SAML_IDP_LOGOUT_REDIRECT_URL=https://localhost:8443/dev/authn/authenticate/logout?redirect_uri=http://localhost:3001/saml/logout/callback
+SAML_IDP_SKIP_CERT_VALIDATION=false
 ```
-
-Key fields and their `.env` mappings:
-
-- `<service-provider><id>` and `<assertion><audience>` must both equal `SAML_SP_ISSUER` (default `http://localhost:3001/saml/metadata`).
-- `<assertion-consumer-service><url>` must equal `SAML_SP_CALLBACK_URL` (default `http://localhost:3001/saml/callback`).
-- `<allowed-authenticators>` names the Curity authenticator(s) end users will sign in with — `username` is the default; swap in whatever you have configured.
-- `<force-authn>true</force-authn>` makes Curity always show the login screen — convenient for testing different users; remove if you want SSO behavior.
 
 </details>
 
-## Usage
-
-The app is organised into four tabs accessible via the top tab bar. Tab state is hash-routed (`#/overview` / `#/sp-initiated` / `#/unsolicited` / `#/inspector`) so refreshes and browser back/forward preserve the active tab.
-
-- **Overview** — landing page. Two flow cards + a Setup Checklist split by flow ("SP-Initiated prerequisites" and "Unsolicited prerequisites"). The two user-confirmed Unsolicited items (cert registered, redirect URI registered) persist their checkbox state in `localStorage`.
-- **SP-Initiated** — Sign In/Out, current session info, and the **SAML Configuration** editor (since it only governs this flow).
-- **Unsolicited** — IdP-initiated SAML Response tester. Editable parameters, sign-assertion/sign-response toggles, then the result block with a step indicator, HTTP trace, tokens, and decoded id_token claims.
-- **Inspector** — every captured SAML message with a flow filter (All / SP-Initiated / Unsolicited) and per-message source badges.
-
-### Initiating SAML Login (SP-Initiated)
-
-1. Open http://localhost:3000 — you land on the **Overview** tab
-2. Click **"Open SP-Initiated"** (or pick the **SP-Initiated** tab directly)
-3. Click **"Sign In with SAML"**
-4. Complete the login at the Curity IDP
-5. You land back on **SP-Initiated** with session info populated; the success banner offers **"View captured messages →"** to jump straight to the Inspector
-
-### Running the Unsolicited Flow
-
-1. Open the **Unsolicited** tab
-2. Adjust parameters if needed (NameID, audience, OAuth client, sign-assertion / sign-response toggles)
-3. Click **"Send Unsolicited Response"**
-4. The result panel shows a step indicator, success/failure banner, HTTP trace, and tokens. Click **"Inspect XML →"** in the banner to jump to the Inspector for the captured Response XML.
-
-### Viewing SAML Messages
-
-The **Inspector** tab shows captured messages in four sub-tabs:
-- **Requests** — SAML AuthnRequests sent to the IdP (all SP-Initiated)
-- **Responses** — SAML Responses received (filter to see SP-Initiated vs. Unsolicited)
-- **Assertions** — parsed user attributes + session index (all SP-Initiated)
-- **Decoder** — paste a Base64-encoded SAML message to decode it on the fly
-
-Each message header carries a flow badge (`SP-Initiated` / `Unsolicited`). Use the **Filter** above the sub-tabs to scope to one flow.
-
-### Updating Configuration
-
-The **SAML Configuration** panel lives on the SP-Initiated tab (it only governs that flow's passport-saml strategy options).
-
-1. Open the **SP-Initiated** tab
-2. Scroll to **SAML Configuration** and click **Edit**
-3. Either **Import from Metadata** (paste IDP/SP metadata XML, fields auto-extract) or fill in **Manual Entry** (entry point, SP Entity ID, callback URL, IDP cert)
-4. Click **Save Configuration**
-
-## Testing
-
-Vitest unit + integration tests live next to source as `*.test.ts`. Run with:
+<details>
+<summary>Other useful scripts</summary>
 
 ```bash
-npm test                 # one-shot, CI-friendly
-npm run test:watch       # re-run on save while editing
-npm run test:coverage    # v8 coverage report
+npm run typecheck       # tsc --noEmit on server + client
+npm test                # Vitest one-shot
+npm run test:watch      # Vitest in watch mode
+npm run test:coverage   # Vitest v8 coverage report
+npm run build           # tsc server + Vite client build
+npm start               # Run the compiled production server
 ```
 
-Coverage is deliberately concentrated on the SAML wire-format pieces — these have silent failure modes that manual UI testing won't catch quickly:
+</details>
 
-| Area | Coverage | What it guards |
-|---|---|---|
-| `unsolicited/sign.ts` | 96% | `<ds:Signature>` placement (immediately after `<saml:Issuer>`) and the nested sign-assertion-then-response invariant |
-| `saml/metadata.ts` | 96% | IdP/SP parsing with both `md:`-prefixed and default-namespace XML |
-| `unsolicited/buildResponse.ts` | 92% | Response XML shape, escaping, unique IDs, default time offsets |
-| `saml/decode.ts` | 89% | base64 + deflate, base64-only, malformed input |
-| `config/samlConfig.ts` | 100% | Env permutations → strategy config + `isSamlConfigured` flag |
-| `unsolicited/http/cookieJar.ts` | 100% | Cookie absorb/header semantics across hops |
-| `routes/diagnostic.ts` | 86% | HTTP routing (supertest against a booted Express app) |
+## Features
 
-What's *not* covered: the full unsolicited end-to-end chain (requires a live Curity), the network HTTP wrapper, and client components. These remain manual smoke tests.
+- **SAML Service Provider** via Passport + `@node-saml/passport-saml`.
+- **Unsolicited SAML Response tester** — single click renders access / id / refresh tokens, decoded `id_token` claims, the HTTP trace, and the sent XML. Form fields for audience, NameID, OAuth client, scope, plus sign-assertion / sign-response toggles.
+- **Real-time SAML message capture** with syntax-highlighted XML, per-message flow badges, and a flow filter.
+- **Auto-configuration from IdP metadata URL** (entry point + cert fetched at startup).
+- **In-UI config editor** for the SAML strategy, with metadata import.
+- **Base64 decoder** for ad-hoc inspection of pasted SAML messages.
 
-## Tech Stack
+## Usage
 
-- **Language:** TypeScript throughout (strict mode). Server runs via `tsx` in dev and compiled JS in production; client is bundled by Vite.
-- **Backend:** Node.js + Express + Passport (@node-saml/passport-saml), session/cookie middleware, xml2js, xml-crypto, node-forge, @xmldom/xmldom.
-- **Frontend:** React 18, Tailwind 4, Radix UI, lucide-react, Axios.
-- **Tests:** Vitest + supertest, co-located beside source (`*.test.ts`).
+The app has four hash-routed tabs (`#/overview` / `#/sp-initiated` / `#/unsolicited` / `#/inspector`). Tab state survives refreshes and browser back/forward.
 
-## Project Structure
+| Tab | What it does |
+|---|---|
+| **Overview** | Landing page. Flow chooser cards + per-flow setup checklist (`localStorage`-persisted for user-confirmed items). |
+| **SP-Initiated** | Sign In / Out, session info, and the **SAML Configuration** editor (it governs this flow only). |
+| **Unsolicited** | Parameter editor + sign toggles, then result panel with stepper, HTTP trace, tokens, decoded `id_token` claims. |
+| **Inspector** | Captured Requests / Responses / Assertions + standalone Base64 Decoder. Per-message flow badges and an All / SP-Initiated / Unsolicited filter. |
 
-```
-saml-inspector/
-├── server/
-│   ├── index.ts                  # Bootstrap entry (env → config → strategy → listen)
-│   ├── app.ts                    # createApp(): Express wiring (no listen)
-│   ├── state.ts                  # Mutable SAML config state holder
-│   ├── config/                   # env.ts, samlConfig.ts, bootstrap.ts
-│   ├── saml/                     # strategy.ts, metadata.ts, decode.ts, messageStore.ts
-│   ├── routes/                   # diagnostic.ts, samlAuth.ts, unsolicited.ts
-│   ├── lib/httpClient.ts         # Shared insecure http/https helpers
-│   ├── unsolicited/              # Unsolicited SAML Response test backend
-│   │   ├── keys.ts               # First-boot RSA + self-signed X.509 generation
-│   │   ├── buildResponse.ts      # Builds unsigned SAML 2.0 Response XML
-│   │   ├── sign.ts               # signAssertion / signResponse with xml-crypto
-│   │   ├── handler.ts            # Orchestrates the 3-step flow
-│   │   ├── oauthChain.ts         # POST → form follow → Fetch Tokens (cookie-aware)
-│   │   ├── http/                 # cookieJar.ts + request.ts (fetch wrapper)
-│   │   └── types.ts              # UnsolicitedInput, UnsolicitedResult union
-│   ├── types/domain.ts           # Cross-module types
-│   └── keys/                     # Generated IdP signing keypair (gitignored)
-├── client/
-│   ├── src/
-│   │   ├── App.tsx, main.tsx, index.css
-│   │   ├── components/
-│   │   │   ├── tabs/                           # OverviewTab, SpInitiatedTab, UnsolicitedTab, InspectorTab
-│   │   │   ├── Header.tsx, StatusStrip.tsx, TabBar.tsx, AlertBanner.tsx
-│   │   │   ├── Dashboard.tsx                   # SP-Initiated auth status + Sign In/Out
-│   │   │   ├── SessionInfo.tsx                 # User attributes + session index
-│   │   │   ├── ConfigPanel.tsx                 # SAML strategy editor (SP-Initiated tab)
-│   │   │   ├── MessageViewer.tsx               # Captured messages with source badges
-│   │   │   ├── SetupChecklist.tsx              # Per-flow prerequisite grouping (Overview)
-│   │   │   ├── HostCuritySetup.tsx             # Cert + redirect-URI host-Curity instructions
-│   │   │   ├── ParametersForm.tsx              # Unsolicited input fields + submit
-│   │   │   ├── UnsolicitedResult.tsx           # Stepper + outcome + trace + tokens
-│   │   │   ├── FlowStepper.tsx                 # Horizontal step indicator
-│   │   │   ├── CollapsibleSection.tsx, CopyButton.tsx
-│   │   │   └── ui/                             # shadcn primitives
-│   │   ├── api/                                # Typed axios layer (one file per endpoint)
-│   │   ├── hooks/                              # useDiagnosticData, useIdpStatus, useTab, useLocalStorage
-│   │   ├── types/api.ts                        # Client mirror of server payload types
-│   │   └── lib/utils.ts
-│   ├── tsconfig.json
-│   ├── package.json
-│   └── vite.config.ts
-├── scripts/
-│   └── extract-cert.ts           # Certificate extraction utility
-├── tsconfig.json                 # Server typecheck config (rootDir: ".")
-├── tsconfig.build.json           # Server production build (rootDir: "./server")
-├── vitest.config.ts
-├── .env.example
-├── .gitignore
-├── package.json
-├── CLAUDE.md                     # AI/engineer handoff notes — gotchas
-└── README.md
-```
+### SP-Initiated walkthrough
 
-## API Endpoints
+1. Open http://localhost:3000 — you land on **Overview**.
+2. Click **"Open SP-Initiated"** (or pick the **SP-Initiated** tab directly).
+3. Click **"Sign In with SAML"** and complete login at the Curity IdP.
+4. You land back on **SP-Initiated** with session info populated; the success banner offers **"View captured messages →"** to jump to the Inspector.
 
-### Backend Endpoints
+### Unsolicited walkthrough
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check and configuration status |
-| `/api/session` | GET | Current session information |
-| `/api/config` | GET | Current SAML configuration |
-| `/api/config` | POST | Update SAML configuration |
-| `/api/idp-status` | GET | Check if IDP endpoint is reachable |
-| `/api/messages` | GET | Get captured SAML messages |
-| `/api/messages` | DELETE | Clear captured messages |
-| `/api/decode` | POST | Decode a SAML message |
-| `/api/parse-metadata` | POST | Parse SAML metadata XML |
-| `/saml/metadata` | GET | SP metadata XML |
-| `/saml/login` | GET | Initiate SAML authentication |
-| `/saml/callback` | POST | SAML assertion consumer service |
-| `/saml/logout` | GET | Logout and redirect to IDP logout |
-| `/saml/logout/callback` | GET | Callback after IDP logout completes |
-| `/api/unsolicited/send` | POST | Build + sign + POST unsolicited SAML Response and drive OAuth chain |
-| `/api/unsolicited/defaults` | GET | Defaults the UnsolicitedPanel pre-fills the form with |
-| `/api/unsolicited/cert` | GET | IdP signing cert PEM (for one-time host SP registration) |
-| `/api/unsolicited/callback` | GET | Registered OAuth `redirect_uri` target (code is captured server-side) |
+> **First time?** Two host-Curity config steps are required — see [Curity-side setup](#curity-side-setup) below.
 
+1. Open the **Unsolicited** tab.
+2. Adjust parameters if needed — NameID, audience, OAuth client, sign-assertion / sign-response toggles.
+3. Click **"Send Unsolicited Response"**.
+4. The result panel shows a step indicator, success/failure banner, HTTP trace, and tokens. **"Inspect XML →"** jumps to the Inspector for the captured Response.
 
-## SAML SP Initiated Flow
+### Inspector tab
 
-### Overview
+Four sub-tabs:
+
+- **Requests** — SAML `AuthnRequest`s sent to the IdP (all SP-Initiated).
+- **Responses** — SAML Responses received (filter shows SP-Initiated vs. Unsolicited).
+- **Assertions** — parsed user attributes + session index (all SP-Initiated).
+- **Decoder** — paste a Base64-encoded SAML message to decode it on the fly.
+
+### Updating SAML configuration in-app
+
+`SAML Configuration` lives on the **SP-Initiated** tab. Click **Edit**, then either **Import from Metadata** (paste XML — fields auto-extract) or fill in **Manual Entry** (entry point, SP entity ID, callback URL, IdP cert). Click **Save Configuration**.
+
+## SAML flows
+
+### SP-Initiated flow
+
+The classic browser-redirect SAML 2 SSO. The browser is the bus between SP and IdP — every protocol message travels through it via HTTP-Redirect or HTTP-POST bindings.
+
+<details>
+<summary>Sequence diagram</summary>
 
 ```
 ┌─────────────┐                  ┌──────────────┐                  ┌─────────────┐
@@ -375,93 +154,42 @@ saml-inspector/
        │                                │                                 │
 ```
 
-### Detailed Login Steps
-
-1. **User Initiates Login**: User clicks "Sign In with SAML" button
-2. **Generate AuthnRequest**: SP creates a SAML authentication request, compresses (deflate), and Base64 encodes it
-3. **Redirect to IDP**: Browser redirects to Curity with SAMLRequest parameter
-4. **IDP Authentication**: Curity displays login page and validates user credentials
-5. **Generate Assertion**: Curity creates a signed SAML assertion with user attributes
-6. **POST Response**: Browser POSTs Base64-encoded SAMLResponse to SP callback URL
-7. **Validate & Create Session**: SP validates signature, extracts attributes, and creates HTTP session
-8. **Display Results**: User sees dashboard with session info and captured SAML messages
-
-### Key Security Elements
-
-- **Digital Signatures**: Curity signs assertions with private key, SP validates with public certificate
-- **Timestamps**: `NotBefore` and `NotOnOrAfter` prevent replay attacks
-- **Audience Restriction**: Ensures assertion is intended for this SP
-- **Subject Confirmation**: Validates recipient
-
-### SAML Bindings
-
-- **HTTP-Redirect** (AuthnRequest): Request sent via browser redirect with deflated/Base64 encoded SAMLRequest
-- **HTTP-POST** (Response): Response sent via form POST with Base64 encoded SAMLResponse
-
-## Unsolicited SAML Response test
-
-The app can additionally hand-craft, sign and POST an **unsolicited SAML 2.0 Response** at a Curity SAML2 authenticator (`saml2-sp`), then drive the OAuth code flow, all the way to tokens — entirely from the UI.
-
-### One-time setup in Curity
-
-On first boot the server writes a fresh 2048-bit RSA keypair + self-signed X.509 certificate to `server/keys/idp-signing.{key,crt}.pem`. Two manual config changes are then needed on the host Curity (the SP being tested):
-
-1. **Trust the cert.** Open the admin UI → Facilities → Signature Verification Keys → Add. Paste the cert PEM (also available via `GET /api/unsolicited/cert` or the "Copy PEM" button in the UnsolicitedPanel's "One Time Setup In Curity " section). Reference the new key from the `saml2-sp` authenticator (primary or secondary signature-verification key).
-2. **Add the callback URL.** Admin UI → Token Service → Clients → `saml2_unsolicited_client` → Redirect URIs → Add `http://localhost:3001/api/unsolicited/callback` (or whatever `UNSOLICITED_REDIRECT_URI` is set to).
-
-Commit both changes. From that point on, just hit **Send Unsolicited Response** in the UI.
-
-#### Reference OAuth client config (XML)
-
-Here's the minimal `saml2_unsolicited_client` definition.
+</details>
 
 <details>
-<summary>Click to expand <code>saml2_unsolicited_client</code> XML</summary>
+<summary>Detailed steps, security properties, and bindings</summary>
 
-```xml
-<config xmlns="http://tail-f.com/ns/config/1.0">
-  <profiles xmlns="https://curity.se/ns/conf/base">
-    <profile>
-      <id>oauth-dev</id>
-      <type xmlns:as="https://curity.se/ns/conf/profile/oauth">as:oauth-service</type>
-      <settings>
-        <authorization-server xmlns="https://curity.se/ns/conf/profile/oauth">
-          <client-store>
-            <config-backed>
-              <client>
-                <id>saml2_unsolicited_client</id>
-                <secret>$5$yonw8ftgqJ....</secret>
-                <redirect-uris>http://localhost:3001/api/unsolicited/callback</redirect-uris>
-                <scope>openid</scope>
-                <user-authentication>
-                  <allowed-authenticators>saml2-sp</allowed-authenticators>
-                </user-authentication>
-                <capabilities>
-                  <code>
-                  </code>
-                </capabilities>
-                <validate-port-on-loopback-interfaces>true</validate-port-on-loopback-interfaces>
-              </client>
-            </config-backed>
-          </client-store>
-        </authorization-server>
-      </settings>
-    </profile>
-  </profiles>
-</config>
-```
+**Steps**
 
-Key fields the diagnostic app depends on:
-- `<id>` must equal `UNSOLICITED_CLIENT_ID` (default `saml2_unsolicited_client`).
-- `<redirect-uris>` must include `UNSOLICITED_REDIRECT_URI` (default `http://localhost:3001/api/unsolicited/callback`).
-- `<allowed-authenticators>` must be `saml2-sp` — the authenticator the unsolicited Response is POSTed at.
-- `<capabilities><code/></capabilities>` enables the authorization-code grant the app exchanges in Step 3.
+1. User clicks "Sign In with SAML".
+2. SP creates an `AuthnRequest`, deflates + Base64-encodes it.
+3. Browser is redirected to Curity with `SAMLRequest`.
+4. Curity authenticates the user.
+5. Curity signs an Assertion containing user attributes.
+6. Browser POSTs the `SAMLResponse` to the SP callback URL.
+7. SP validates the signature, extracts attributes, creates an HTTP session.
+8. User sees the dashboard with session info and captured messages.
+
+**Security elements**
+
+- **Digital signatures** — Curity signs assertions with its private key; SP validates with the published cert.
+- **Timestamps** (`NotBefore` / `NotOnOrAfter`) prevent replay attacks.
+- **Audience restriction** scopes the assertion to this SP.
+- **Subject confirmation** validates the assertion recipient.
+
+**Bindings**
+
+- HTTP-Redirect for `AuthnRequest` (deflated + Base64 in the URL).
+- HTTP-POST for `SAMLResponse` (form POST with Base64 body).
 
 </details>
 
-### Overview
+### Unsolicited (IdP-Initiated) flow
 
-The Unsolicited (IdP-Initiated) flow is almost entirely **server-to-server** — once the user clicks the button, SAML Inspector talks to Curity directly across multiple hops. The browser only sees the initial click and the final result.
+Almost entirely **server-to-server** — once the user clicks the button, SAML Inspector talks to Curity directly across multiple hops. The browser only sees the initial click and the final result.
+
+<details>
+<summary>Sequence diagram</summary>
 
 ```
 ┌─────────────┐                  ┌──────────────┐                  ┌─────────────┐
@@ -522,51 +250,300 @@ The Unsolicited (IdP-Initiated) flow is almost entirely **server-to-server** —
        │                                │                                 │
 ```
 
-A few non-obvious details captured in the diagram:
+</details>
 
-- **Step 2 order matters.** The assertion is signed *first*, then the response — the response signature has to cover the canonicalized form of the already-signed assertion. Reversing the order produces a digest mismatch on Curity.
-- **Step 3 form body, not query string.** Curity's `AuthenticationController` gates dispatch to the saml2-sp handler on `serviceProviderId` / `client_id` being present in the form body. Putting them in the URL fails with `400 missing_parameters`.
-- **Step 5 is a POST, not a GET.** Curity returns an HTML auto-submit `<form method="post">` with a hidden CSRF token, not a 302 redirect. SAML Inspector's `followAutoSubmitForm` branches on the method and replays the hidden inputs.
-- **Steps 6–8 server-side cookies.** Session cookies set by Curity in step 4 are tracked by an in-process cookie jar and replayed on every subsequent hop — without them, `/dev/oauth/authorize` can't find the SSO session.
-- **Step 8 the registered redirect URI is never visited by the browser.** It exists so the OAuth client's `redirect_uri` is legitimate, but SAML Inspector intercepts the 303 server-side and reads `?code=…` from the `Location` header directly.
+<details>
+<summary>Wire-format gotchas worth knowing</summary>
 
-### How it works
+- **Sign assertion first, then response.** The response signature must cover the canonicalized form of the *already-signed* assertion. Reversing the order produces a digest mismatch on Curity.
+- **Bootstrap params live in the form body, not the query string.** Curity's `AuthenticationController` gates dispatch on `serviceProviderId` / `client_id` in the body. URL-only fails with `400 missing_parameters`.
+- **The auto-submit form Curity returns is `POST` with a hidden CSRF token**, not a 302 redirect. SAML Inspector's `followAutoSubmitForm` branches on method and replays the hidden inputs.
+- **Cookies traverse hops in-process.** Session cookies from Curity's saml2-sp response are kept in a `CookieJar` and replayed on every subsequent hop — `/dev/oauth/authorize` can't find the SSO session without them.
+- **The registered `redirect_uri` is never visited by the browser** in the normal flow. SAML Inspector intercepts the 303 server-side and reads `?code=…` from the `Location` header directly. The route exists so the OAuth client's `redirect_uri` is legitimate.
 
-The Express backend, on `POST /api/unsolicited/send`:
+</details>
+
+<details>
+<summary>What the backend does on POST /api/unsolicited/send</summary>
 
 1. Builds an unsigned `<samlp:Response>` with `<saml:Issuer>`, `<samlp:Status>`, and a `<saml:Assertion>` containing `<Subject>`, `<SubjectConfirmation>`, `<Conditions>` (with `<AudienceRestriction>`) and `<AuthnStatement>`. No `InResponseTo` — that's what makes it unsolicited.
-2. Signs the assertion (RSA-SHA256, exclusive C14N, enveloped) and then the response — assertion first so the response signature covers the canonicalised, already-signed assertion. Both signatures are repositioned to appear immediately after `<saml:Issuer>` (SAML 2.0 schema requirement).
-3. POSTs `application/x-www-form-urlencoded` to the saml2-sp ACS URL with the bootstrap fields Curity's `AuthenticationController` needs to dispatch through the SAML transformer: `SAMLResponse`, `serviceProviderId`, `resumePath`, `client_id`, `redirect_uri`, `response_type=code`, `scope`.
+2. Signs the assertion (RSA-SHA256, exclusive C14N, enveloped), then signs the response. Both signatures are repositioned immediately after `<saml:Issuer>` (SAML 2.0 schema requirement).
+3. POSTs `application/x-www-form-urlencoded` to the saml2-sp ACS URL with `SAMLResponse`, `serviceProviderId`, `resumePath`, `client_id`, `redirect_uri`, `response_type=code`, `scope`.
 4. Follows the auto-submit HTML form Curity returns (POST to `/dev/oauth/authorize` with cookies), reads the `code` from the 303 `Location` header server-side.
 5. Exchanges the code at `/dev/oauth/token` with HTTP Basic auth.
 6. Returns the tokens, decoded `id_token` claims and an HTTP trace to the UI.
 
-### UI form fields
+</details>
+
+#### UI form fields
 
 - **Subject NameID** — assertion subject (e.g. `johndoe`).
-- **Audience** — `<saml:Audience>` value. 
-- **OAuth Client ID / Client Secret / Redirect URI / scope** — used for the OAuth code exchange. Defaults are pre-filled.
-- **Sign assertion / Sign response** — checkboxes to A/B test which Curity-side validators fire.
+- **Audience** — `<saml:Audience>` value.
+- **OAuth Client ID / Client Secret / Redirect URI / Scope** — used for the OAuth code exchange. Defaults pre-filled.
+- **Sign assertion / Sign response** — toggles to A/B test which Curity-side validators fire.
 
-### Environment overrides
+## Curity-side setup
 
-See `.env.example` for the full list of `UNSOLICITED_*` variables. Common ones:
+SAML Inspector talks to a Curity Identity Server in two distinct roles, one per flow, and each needs its own piece of Curity-side config:
 
-- `UNSOLICITED_ACS_URL` — saml2-sp ACS endpoint.
-- `UNSOLICITED_IDP_ENTITY_ID` — Issuer used in the Response/Assertion.
-- `UNSOLICITED_CLIENT_ID` / `UNSOLICITED_CLIENT_SECRET` / `UNSOLICITED_REDIRECT_URI` / `UNSOLICITED_SCOPE`.
-- `UNSOLICITED_KEY_PATH` / `UNSOLICITED_CERT_PATH` — point at a different keypair.
+| Flow | What you register on Curity |
+|---|---|
+| **SP-Initiated** | A SAML 2 *service-provider* on the `saml-idp` profile — Curity acts as the IdP, this app is the SP. |
+| **Unsolicited** | A `saml2-sp` *authenticator* that trusts the IdP signing cert, plus an OAuth *client* with our redirect URI. |
 
-### API endpoints
+For background, see [Curity's SAML IdP profile docs](https://curity.io/docs/identity-server/profiles/saml-idp-profile/).
 
-- `POST /api/unsolicited/send` — run the flow (form body in JSON).
-- `GET /api/unsolicited/defaults` — defaults the UI pre-fills.
-- `GET /api/unsolicited/cert` — the IdP signing cert PEM (for one-time registration).
-- `GET /api/unsolicited/callback` — registered OAuth redirect target. Normally not reached by a browser; the server captures the code from the 303 directly.
+### One-time Unsolicited setup
 
-## Additional Resources
+On first boot the server writes a fresh 2048-bit RSA keypair + self-signed X.509 cert to `server/keys/idp-signing.{key,crt}.pem`. Two manual changes are then needed on the host Curity:
 
-- [Curity Identity Server SAML IDP Documentation](https://curity.io/docs/identity-server/profiles/saml-idp-profile/)
-- [SAML 2.0 Specification](http://docs.oasis-open.org/security/saml/Post2.0/sstc-saml-tech-overview-2.0.html)
-- [Passport-SAML Documentation](https://github.com/node-saml/passport-saml)
+1. **Trust the cert.** Admin UI → Facilities → Signature Verification Keys → Add. Paste the cert PEM (available via `GET /api/unsolicited/cert` or the **"Copy PEM"** button in the Unsolicited tab's "One-Time Setup" section). Reference the new key from the `saml2-sp` authenticator (primary or secondary signature-verification key).
+2. **Register the callback URL.** Admin UI → Token Service → Clients → `saml2_unsolicited_client` → Redirect URIs → Add `http://localhost:3001/api/unsolicited/callback` (or whatever `UNSOLICITED_REDIRECT_URI` is set to).
 
+Commit both changes. From that point on, just hit **Send Unsolicited Response** in the UI.
+
+### Reference XML
+
+<details>
+<summary>SAML SP config (for SP-Initiated flow)</summary>
+
+Minimal `service-provider` definition.
+
+```xml
+<config xmlns="http://tail-f.com/ns/config/1.0">
+  <profiles xmlns="https://curity.se/ns/conf/base">
+    <profile>
+      <id>saml-idp</id>
+      <type xmlns:si="https://curity.se/ns/conf/profile/saml-idp">si:saml-idp-service</type>
+      <settings>
+        <saml-idp-service xmlns="https://curity.se/ns/conf/profile/saml-idp">
+          <service-providers>
+            <service-provider>
+              <id>http://localhost:3001/saml/metadata</id>
+              <assertion>
+                <audience>http://localhost:3001/saml/metadata</audience>
+              </assertion>
+              <request-bindings>
+                <redirect/>
+                <post/>
+              </request-bindings>
+              <assertion-consumer-service>
+                <index>1</index>
+                <url>http://localhost:3001/saml/callback</url>
+                <protocol-binding>urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST</protocol-binding>
+              </assertion-consumer-service>
+              <user-authentication>
+                <allowed-authenticators>username</allowed-authenticators>
+                <force-authn>true</force-authn>
+              </user-authentication>
+            </service-provider>
+          </service-providers>
+        </saml-idp-service>
+      </settings>
+    </profile>
+  </profiles>
+</config>
+```
+
+Key field mappings:
+
+- `<service-provider><id>` and `<assertion><audience>` must both equal `SAML_SP_ISSUER` (default `http://localhost:3001/saml/metadata`).
+- `<assertion-consumer-service><url>` must equal `SAML_SP_CALLBACK_URL` (default `http://localhost:3001/saml/callback`).
+- `<allowed-authenticators>` names the Curity authenticator(s) end users will sign in with — `username` is the default; swap in whatever you have configured.
+- `<force-authn>true</force-authn>` makes Curity always show the login screen — convenient for testing different users; remove if you want SSO behavior.
+
+</details>
+
+<details>
+<summary>OAuth client config (for Unsolicited flow)</summary>
+
+Minimal `saml2_unsolicited_client` definition.
+
+```xml
+<config xmlns="http://tail-f.com/ns/config/1.0">
+  <profiles xmlns="https://curity.se/ns/conf/base">
+    <profile>
+      <id>oauth-dev</id>
+      <type xmlns:as="https://curity.se/ns/conf/profile/oauth">as:oauth-service</type>
+      <settings>
+        <authorization-server xmlns="https://curity.se/ns/conf/profile/oauth">
+          <client-store>
+            <config-backed>
+              <client>
+                <id>saml2_unsolicited_client</id>
+                <secret>$5$yonw8ftgqJ....</secret>
+                <redirect-uris>http://localhost:3001/api/unsolicited/callback</redirect-uris>
+                <scope>openid</scope>
+                <user-authentication>
+                  <allowed-authenticators>saml2-sp</allowed-authenticators>
+                </user-authentication>
+                <capabilities>
+                  <code>
+                  </code>
+                </capabilities>
+                <validate-port-on-loopback-interfaces>true</validate-port-on-loopback-interfaces>
+              </client>
+            </config-backed>
+          </client-store>
+        </authorization-server>
+      </settings>
+    </profile>
+  </profiles>
+</config>
+```
+
+Key field mappings:
+
+- `<id>` must equal `UNSOLICITED_CLIENT_ID` (default `saml2_unsolicited_client`).
+- `<redirect-uris>` must include `UNSOLICITED_REDIRECT_URI` (default `http://localhost:3001/api/unsolicited/callback`).
+- `<allowed-authenticators>` must be `saml2-sp` — the authenticator the unsolicited Response is POSTed at.
+- `<capabilities><code/></capabilities>` enables the authorization-code grant the app exchanges for tokens.
+
+</details>
+
+## Configuration reference
+
+All configuration is in `.env`. See `.env.example` for the full template with comments; the table below is a quick reference.
+
+| Variable | Purpose |
+|---|---|
+| `PORT` | Server port (default `3001`) |
+| `SAML_SP_ISSUER` | SP entity ID (default `http://localhost:3001/saml/metadata`) |
+| `SAML_SP_CALLBACK_URL` | SAML assertion consumer service URL |
+| `SAML_IDP_METADATA_URL` | Auto-configure entry point + cert from this metadata URL (recommended) |
+| `SAML_IDP_ENTRY_POINT` / `SAML_IDP_CERT` | Manual IdP fallback if no metadata URL |
+| `SAML_IDP_LOGOUT_REDIRECT_URL` | Curity SLO endpoint with `?redirect_uri=` back to SP |
+| `SAML_IDP_SKIP_CERT_VALIDATION` | Skip cert validation (dev only) |
+| `UNSOLICITED_ACS_URL` | `saml2-sp` ACS endpoint to POST the unsolicited Response at |
+| `UNSOLICITED_AUDIENCE` | Default `<saml:Audience>` (used to demo the audience-validation gap) |
+| `UNSOLICITED_IDP_ENTITY_ID` | `<saml:Issuer>` value the host SP must trust |
+| `UNSOLICITED_OAUTH_PROFILE_ID` / `UNSOLICITED_RESUME_PATH` | Bootstrap params Curity expects in the form body |
+| `UNSOLICITED_CLIENT_ID` / `UNSOLICITED_CLIENT_SECRET` / `UNSOLICITED_REDIRECT_URI` / `UNSOLICITED_SCOPE` | OAuth client + scope for the code exchange |
+| `UNSOLICITED_TOKEN_URL` | Override the token endpoint if not derivable from ACS host |
+| `UNSOLICITED_KEY_PATH` / `UNSOLICITED_CERT_PATH` | Point at a non-generated keypair (e.g. to A/B against the Python tester) |
+
+## Development
+
+### Testing
+
+Vitest + supertest, co-located beside source as `*.test.ts`.
+
+```bash
+npm test                # one-shot, CI-friendly
+npm run test:watch      # re-run on save
+npm run test:coverage   # v8 coverage report
+```
+
+Coverage is concentrated on the SAML wire-format pieces — they have silent failure modes manual UI testing won't catch:
+
+| Area | Coverage | Guards |
+|---|---|---|
+| `unsolicited/sign.ts` | 96% | `<ds:Signature>` placement (immediately after `<saml:Issuer>`) and the sign-assertion-then-response invariant |
+| `saml/metadata.ts` | 96% | IdP/SP parsing with `md:`-prefixed and default-namespace XML |
+| `unsolicited/buildResponse.ts` | 92% | Response shape, escaping, unique IDs, default time offsets |
+| `saml/decode.ts` | 89% | Base64 + deflate, base64-only, malformed input |
+| `config/samlConfig.ts` | 100% | Env permutations → strategy config + `isSamlConfigured` |
+| `unsolicited/http/cookieJar.ts` | 100% | Cookie absorb/replay across hops |
+| `routes/diagnostic.ts` | 86% | HTTP routing (supertest against a booted Express app) |
+
+Not covered: full unsolicited end-to-end (requires a live Curity), the network HTTP wrapper, and client components. These remain manual smoke tests.
+
+### Tech stack
+
+- **Language:** TypeScript throughout (strict mode). Server: `tsx` in dev, compiled JS in prod. Client: Vite-bundled.
+- **Backend:** Node.js + Express + Passport (`@node-saml/passport-saml`), session/cookie middleware, `xml2js`, `xml-crypto`, `node-forge`, `@xmldom/xmldom`.
+- **Frontend:** React 18, Tailwind 4, Radix UI, lucide-react, Axios.
+- **Tests:** Vitest + supertest, co-located beside source.
+
+<details>
+<summary>Project structure</summary>
+
+```
+saml-inspector/
+├── server/
+│   ├── index.ts                  # Bootstrap entry (env → config → strategy → listen)
+│   ├── app.ts                    # createApp(): Express wiring (no listen)
+│   ├── state.ts                  # Mutable SAML config state holder
+│   ├── config/                   # env.ts, samlConfig.ts, bootstrap.ts
+│   ├── saml/                     # strategy.ts, metadata.ts, decode.ts, messageStore.ts
+│   ├── routes/                   # diagnostic.ts, samlAuth.ts, unsolicited.ts
+│   ├── lib/httpClient.ts         # Shared insecure http/https helpers
+│   ├── unsolicited/              # Unsolicited SAML Response test backend
+│   │   ├── keys.ts               # First-boot RSA + self-signed X.509 generation
+│   │   ├── buildResponse.ts      # Builds unsigned SAML 2.0 Response XML
+│   │   ├── sign.ts               # signAssertion / signResponse with xml-crypto
+│   │   ├── handler.ts            # Orchestrates the 3-step flow
+│   │   ├── oauthChain.ts         # POST → form follow → token exchange (cookie-aware)
+│   │   ├── http/                 # cookieJar.ts + request.ts (fetch wrapper)
+│   │   └── types.ts              # UnsolicitedInput, UnsolicitedResult union
+│   ├── types/domain.ts           # Cross-module types
+│   └── keys/                     # Generated IdP signing keypair (gitignored)
+├── client/
+│   ├── src/
+│   │   ├── App.tsx, main.tsx, index.css
+│   │   ├── components/
+│   │   │   ├── tabs/                           # OverviewTab, SpInitiatedTab, UnsolicitedTab, InspectorTab
+│   │   │   ├── Header.tsx, StatusStrip.tsx, TabBar.tsx, AlertBanner.tsx
+│   │   │   ├── Dashboard.tsx                   # SP-Initiated auth status + Sign In/Out
+│   │   │   ├── SessionInfo.tsx                 # User attributes + session index
+│   │   │   ├── ConfigPanel.tsx                 # SAML strategy editor (SP-Initiated tab)
+│   │   │   ├── MessageViewer.tsx               # Captured messages with source badges
+│   │   │   ├── SetupChecklist.tsx              # Per-flow prerequisite grouping (Overview)
+│   │   │   ├── HostCuritySetup.tsx             # Cert + redirect-URI host-Curity instructions
+│   │   │   ├── ParametersForm.tsx              # Unsolicited input fields + submit
+│   │   │   ├── UnsolicitedResult.tsx           # Stepper + outcome + trace + tokens
+│   │   │   ├── FlowStepper.tsx                 # Horizontal step indicator
+│   │   │   ├── CollapsibleSection.tsx, CopyButton.tsx
+│   │   │   └── ui/                             # shadcn primitives
+│   │   ├── api/                                # Typed axios layer (one file per endpoint)
+│   │   ├── hooks/                              # useDiagnosticData, useIdpStatus, useTab, useLocalStorage
+│   │   ├── types/api.ts                        # Client mirror of server payload types
+│   │   └── lib/utils.ts
+│   ├── tsconfig.json
+│   ├── package.json
+│   └── vite.config.ts
+├── scripts/
+│   └── extract-cert.ts           # Certificate extraction utility
+├── tsconfig.json                 # Server typecheck config (rootDir: ".")
+├── tsconfig.build.json           # Server production build (rootDir: "./server")
+├── vitest.config.ts
+├── .env.example
+├── .gitignore
+├── package.json
+├── CLAUDE.md                     # Engineer/AI handoff notes — gotchas live here
+└── README.md
+```
+
+</details>
+
+## API reference
+
+<details>
+<summary>All HTTP endpoints</summary>
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/health` | GET | Health check + configuration status |
+| `/api/session` | GET | Current session information |
+| `/api/config` | GET / POST | Read or update SAML configuration |
+| `/api/idp-status` | GET | Check IdP endpoint reachability |
+| `/api/messages` | GET / DELETE | Captured SAML messages / clear |
+| `/api/decode` | POST | Decode a SAML message |
+| `/api/parse-metadata` | POST | Parse SAML metadata XML |
+| `/saml/metadata` | GET | SP metadata XML |
+| `/saml/login` | GET | Initiate SAML authentication |
+| `/saml/callback` | POST | SAML assertion consumer service |
+| `/saml/logout` | GET | Logout and redirect to IdP logout |
+| `/saml/logout/callback` | GET | Callback after IdP logout completes |
+| `/api/unsolicited/send` | POST | Build + sign + POST unsolicited SAML Response and drive OAuth chain |
+| `/api/unsolicited/defaults` | GET | Defaults the Unsolicited tab pre-fills the form with |
+| `/api/unsolicited/cert` | GET | IdP signing cert PEM (for one-time host SP registration) |
+| `/api/unsolicited/callback` | GET | Registered OAuth `redirect_uri` target (code is captured server-side) |
+
+</details>
+
+## Resources
+
+- [Curity Identity Server — SAML IdP profile](https://curity.io/docs/identity-server/profiles/saml-idp-profile/)
+- [SAML 2.0 Technical Overview](http://docs.oasis-open.org/security/saml/Post2.0/sstc-saml-tech-overview-2.0.html)
+- [Passport-SAML](https://github.com/node-saml/passport-saml)
