@@ -402,11 +402,11 @@ saml-inspector/
 
 The app can additionally hand-craft, sign and POST an **unsolicited SAML 2.0 Response** at a Curity SAML2 authenticator (`saml2-sp`), then drive the OAuth code flow, all the way to tokens — entirely from the UI.
 
-### One-time setup on the host Curity
+### One-time setup in Curity
 
 On first boot the server writes a fresh 2048-bit RSA keypair + self-signed X.509 certificate to `server/keys/idp-signing.{key,crt}.pem`. Two manual config changes are then needed on the host Curity (the SP being tested):
 
-1. **Trust the cert.** Open the admin UI → Facilities → Signature Verification Keys → Add. Paste the cert PEM (also available via `GET /api/unsolicited/cert` or the "Copy PEM" button in the UnsolicitedPanel's "First-time setup" section). Reference the new key from the `saml2-sp` authenticator (primary or secondary signature-verification key).
+1. **Trust the cert.** Open the admin UI → Facilities → Signature Verification Keys → Add. Paste the cert PEM (also available via `GET /api/unsolicited/cert` or the "Copy PEM" button in the UnsolicitedPanel's "One Time Setup In Curity " section). Reference the new key from the `saml2-sp` authenticator (primary or secondary signature-verification key).
 2. **Add the callback URL.** Admin UI → Token Service → Clients → `saml2_unsolicited_client` → Redirect URIs → Add `http://localhost:3001/api/unsolicited/callback` (or whatever `UNSOLICITED_REDIRECT_URI` is set to).
 
 Commit both changes. From that point on, just hit **Send Unsolicited Response** in the UI.
@@ -474,7 +474,7 @@ The Express backend, on `POST /api/unsolicited/send`:
 
 - **Subject NameID** — assertion subject (e.g. `johndoe`).
 - **Audience** — `<saml:Audience>` value. 
-- **OAuth client_id / client_secret / redirect_uri / scope** — used for the OAuth code exchange. Defaults are pre-filled.
+- **OAuth Client ID / Client Secret / Redirect URI / scope** — used for the OAuth code exchange. Defaults are pre-filled.
 - **Sign assertion / Sign response** — checkboxes to A/B test which Curity-side validators fire.
 
 ### Environment overrides

@@ -13,7 +13,7 @@ npm run server    # Start Express server only (with nodemon)
 npm run client    # Start React dev server only
 npm run build     # Build React frontend for production
 npm start         # Run production server
-./setup.sh        # First-time setup (install deps, create .env)
+./setup.sh        # One Time Setup In Curity setup (install deps, create .env)
 ```
 
 No tests exist — the project relies on manual testing through the UI.

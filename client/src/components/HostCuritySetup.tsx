@@ -16,7 +16,7 @@ export function HostCuritySetupCert({ cert }: CertStepProps) {
     <div>
       <p className="text-xs text-ink-500 mb-2">
         Curity admin UI → Facilities → Signature Verification Keys → Add → reference it
-        from the <code className="text-xs bg-ink-50 px-1 rounded">saml2-sp</code>{' '}
+        from the <code className="text-xs bg-ink-50 px-1 rounded">saml2</code>{' '}
         authenticator.
       </p>
       <div className="flex items-start gap-2">
@@ -65,7 +65,7 @@ interface HostCuritySetupProps {
 
 /**
  * Both manual config steps needed on the host Curity, shown together.
- * Renders inside the UnsolicitedTab's "First-time setup" accordion.
+ * Renders inside the UnsolicitedTab's "One Time Setup In Curity" accordion.
  *
  * For the per-item drilldown on the Overview checklist, use the
  * HostCuritySetupCert / HostCuritySetupRedirect subcomponents directly so
@@ -78,7 +78,7 @@ export function HostCuritySetup({ cert, clientId, redirectUri }: HostCuritySetup
         <div className="font-medium mb-1 flex items-center gap-2">
           <KeyRound className="h-3.5 w-3.5" />
           1. Register the IdP signing cert on the{' '}
-          <code className="text-xs bg-ink-50 px-1 rounded">saml2-sp</code> authenticator
+          <code className="text-xs bg-ink-50 px-1 rounded">saml2</code> authenticator
         </div>
         <HostCuritySetupCert cert={cert} />
       </div>

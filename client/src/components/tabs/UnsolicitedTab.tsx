@@ -102,7 +102,7 @@ export function UnsolicitedTab({
       </CardHeader>
       <CardContent className="space-y-4">
         <CollapsibleSection
-          title="First-time setup on the host Curity"
+          title="One Time Setup In Curity"
           defaultOpen={false}
           right={<Info className="h-4 w-4 text-ink-400" />}
         >

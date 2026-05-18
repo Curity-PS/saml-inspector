@@ -1,4 +1,5 @@
-import { Zap } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, EyeOff, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -36,18 +37,18 @@ export function ParametersForm({ form, onChange, onSubmit, submitting }: Paramet
           onChange={(v) => onChange('audience', v)}
         />
         <FormField
-          label="OAuth client_id"
+          label="OAuth Client ID"
           value={form.clientId ?? ''}
           onChange={(v) => onChange('clientId', v)}
         />
         <FormField
-          label="OAuth client_secret"
+          label="OAuth Client Secret"
           type="password"
           value={form.clientSecret ?? ''}
           onChange={(v) => onChange('clientSecret', v)}
         />
         <FormField
-          label="redirect_uri"
+          label="Redirect URI"
           value={form.redirectUri ?? ''}
           onChange={(v) => onChange('redirectUri', v)}
         />
@@ -87,10 +88,31 @@ interface FormFieldProps {
 }
 
 function FormField({ label, value, type, onChange }: FormFieldProps) {
+  const isPassword = type === 'password';
+  const [revealed, setRevealed] = useState(false);
+  const effectiveType = isPassword && revealed ? 'text' : type;
   return (
     <div>
       <Label className="text-xs">{label}</Label>
-      <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
+      <div className="relative">
+        <Input
+          type={effectiveType}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={isPassword ? 'pr-9' : undefined}
+        />
+        {isPassword && (
+          <button
+            type="button"
+            aria-label={revealed ? 'Hide value' : 'Reveal value'}
+            aria-pressed={revealed}
+            onClick={() => setRevealed((r) => !r)}
+            className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center justify-center h-7 w-7 rounded-md text-ink-400 hover:text-ink-700 hover:bg-ink-50 transition-colors cursor-pointer"
+          >
+            {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

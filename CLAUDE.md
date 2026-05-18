@@ -103,7 +103,7 @@ npm test             # Vitest one-shot
 npm run test:watch   # Vitest in watch mode
 npm run test:coverage # Vitest with v8 coverage
 npm start            # Run compiled production server (node server/dist/index.js)
-./setup.sh           # First-time setup (install deps, create .env)
+./setup.sh           # One Time Setup In Curity setup (install deps, create .env)
 ```
 
 ## Configuration
