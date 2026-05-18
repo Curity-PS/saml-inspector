@@ -49,13 +49,14 @@
   --color-hairline: #e4e6ec;
   --color-hairline-strong: #cfd7df;
 
-  /* XML syntax — keep stable; attr uses the brand accent so code samples
-     stay on-brand without competing with chrome. */
-  --color-xml-bracket: #737373;
-  --color-xml-tag: #62818f;     /* Curity --color-info */
-  --color-xml-attr: #c23b87;    /* brand-600 — slightly deeper than spot for legibility on white */
-  --color-xml-value: #4aa69e;   /* Curity --color-resources-develop (teal) */
-  --color-xml-text: #4d4d4d;    /* Curity --color-paragraphs */
+  /* XML syntax — tuned for the dark ink-900 panel that XmlBlock renders on.
+     Tags carry the Curity pink to keep the brand identity; attrs/values use
+     contrasting hues so the eye can quickly separate name from value. */
+  --color-xml-bracket: #94a3b8;  /* slate-400 — quiet punctuation */
+  --color-xml-tag: #f9a8d4;      /* pink-300 — brand-aligned, vivid on dark */
+  --color-xml-attr: #7dd3fc;     /* sky-300 — distinct from tag */
+  --color-xml-value: #fcd34d;    /* amber-300 — classic "string" highlight */
+  --color-xml-text: #e2e8f0;     /* slate-200 — bright neutral for inter-tag content */
 
   --animate-fade-in: fade-in 0.3s ease-out both;
   --animate-slide-up: slide-up 0.3s ease-out both;

@@ -285,7 +285,7 @@ function XmlBlock({ xml }: { xml: string | undefined }) {
       </button>
       {/* pr-20 leaves space so the rightmost characters in the XML never
           slide under the copy button on narrow viewports. */}
-      <pre className="bg-ink-900 text-ink-200 p-4 pr-20 rounded-lg overflow-x-auto text-xs leading-relaxed font-mono custom-scrollbar">
+      <pre className="bg-ink-900 text-ink-200 p-4 pr-20 rounded-lg overflow-x-auto text-[13px] leading-relaxed font-mono custom-scrollbar">
         {lines.map((line, idx) => renderXmlLine(line, idx))}
       </pre>
     </div>
@@ -426,7 +426,7 @@ function AssertionList({ items, expandedIndex, onToggle }: AssertionListProps) {
               <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider mb-3">
                 User Attributes
               </p>
-              <pre className="bg-ink-900 text-ink-200 p-4 rounded-lg overflow-x-auto text-xs leading-relaxed font-mono custom-scrollbar">
+              <pre className="bg-ink-900 text-ink-200 p-4 rounded-lg overflow-x-auto text-[13px] leading-relaxed font-mono custom-scrollbar">
                 {Object.entries(assertion.user ?? {}).map(([key, value]) => (
                   <div key={key} className="mb-1">
                     <span className="xml-attr">{key}</span>
