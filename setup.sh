@@ -36,7 +36,6 @@ if [ ! -f .env ]; then
     echo "   Required configuration:"
     echo "   - SAML_ENTRY_POINT: Your Curity SAML IDP endpoint"
     echo "   - SAML_IDP_CERT: Your Curity IDP public certificate"
-    echo "   - SESSION_SECRET: A random secret string"
 else
     echo "ℹ️  .env file already exists, skipping..."
 fi

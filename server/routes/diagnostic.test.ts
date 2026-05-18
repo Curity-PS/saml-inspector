@@ -16,7 +16,6 @@ async function setup() {
   // Minimal env so buildSamlConfig() reports configured=true via cert-skip.
   process.env.SAML_IDP_ENTRY_POINT = 'https://idp.test/sso';
   process.env.SAML_IDP_SKIP_CERT_VALIDATION = 'true';
-  process.env.SESSION_SECRET = 'test-secret';
 
   // Fresh module graph per test boot so state is clean.
   const { createApp } = await import('../app');

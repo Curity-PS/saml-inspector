@@ -43,7 +43,6 @@ Simply provide the IDP metadata URL and the application will automatically fetch
 ```env
 # SP Server Configuration
 PORT=3001
-SESSION_SECRET=random-secret
 
 # SAML Service Provider (SP) Configuration
 SAML_SP_ISSUER=http://localhost:3001/saml/metadata
@@ -66,7 +65,6 @@ If you prefer to configure manually or metadata is not available:
 ```env
 # SP Server Configuration
 PORT=3001
-SESSION_SECRET=your-random-session-secret-here-change-this
 
 # SAML Service Provider (SP) Configuration
 SAML_SP_ISSUER=http://localhost:3001/saml/metadata
