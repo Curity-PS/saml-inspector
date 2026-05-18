@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,9 +35,23 @@ interface MessageViewerProps {
 }
 
 function MessageViewer({ messages, onClear, onRefresh }: MessageViewerProps) {
+  const [activeTab, setActiveTab] = useState('requests');
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [decodeInput, setDecodeInput] = useState('');
   const [decodedResult, setDecodedResult] = useState<DecodedMessage | null>(null);
+
+  // Auto-expand the single message when the active sub-tab has exactly one
+  // entry — saves the user a click in the common single-flow case. Resets to
+  // collapsed otherwise, including on tab switch.
+  useEffect(() => {
+    const counts: Record<string, number> = {
+      requests: messages.requests?.length ?? 0,
+      responses: messages.responses?.length ?? 0,
+      assertions: messages.assertions?.length ?? 0,
+      decoder: 0
+    };
+    setExpandedIndex(counts[activeTab] === 1 ? 0 : null);
+  }, [activeTab, messages]);
 
   const handleDecode = async () => {
     if (!decodeInput.trim()) return;
@@ -79,7 +93,7 @@ function MessageViewer({ messages, onClear, onRefresh }: MessageViewerProps) {
         </div>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="requests" onValueChange={() => setExpandedIndex(null)}>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full grid grid-cols-4">
             <TabsTrigger value="requests" className="gap-1.5">
               <Send className="h-3.5 w-3.5" />
@@ -344,7 +358,7 @@ function MessageList({
                     Unsolicited
                   </Badge>
                 ) : (
-                  <Badge variant="secondary" className="text-[10px] py-0">
+                  <Badge variant="success" className="text-[10px] py-0">
                     SP-Initiated
                   </Badge>
                 )}
@@ -405,7 +419,7 @@ function AssertionList({ items, expandedIndex, onToggle }: AssertionListProps) {
           >
             <span className="text-sm font-medium text-ink-800 flex items-center gap-2">
               Assertion #{index + 1}
-              <Badge variant="secondary" className="text-[10px] py-0">
+              <Badge variant="success" className="text-[10px] py-0">
                 SP-Initiated
               </Badge>
             </span>

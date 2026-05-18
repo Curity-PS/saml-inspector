@@ -10,13 +10,13 @@ It drives **two flows**:
 ## Quick Start
 
 ```bash
-# 1. Install (server + client; postinstall installs client/ too)
+# 1. Install (server + client)
 npm install
 
 # 2. Configure
 cp .env.example .env
 # edit .env — at minimum point SAML_IDP_METADATA_URL at your Curity, e.g.:
-#   SAML_IDP_METADATA_URL=https://localhost:8443/saml/sso/metadata
+# SAML_IDP_METADATA_URL=https://localhost:8443/saml/sso/metadata
 
 # 3. Run
 npm run dev

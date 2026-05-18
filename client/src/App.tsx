@@ -9,7 +9,7 @@ import { SpInitiatedTab } from './components/tabs/SpInitiatedTab';
 import { UnsolicitedTab } from './components/tabs/UnsolicitedTab';
 import { useDiagnosticData } from './hooks/useDiagnosticData';
 import { useIdpStatus } from './hooks/useIdpStatus';
-import { useTab } from './hooks/useTab';
+import { useTab, type TabId } from './hooks/useTab';
 import { clearMessages } from './api/messages';
 import { updateConfig } from './api/config';
 import { getUnsolicitedCert, getUnsolicitedDefaults } from './api/unsolicited';
@@ -29,8 +29,12 @@ function App() {
   );
   const [unsolicitedCert, setUnsolicitedCert] = useState('');
 
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  // Banners are scoped to the tab they were raised on: when the user navigates
+  // away, the auto-clear effect below drops them. Origin tab is recorded with
+  // the message at every set-callsite.
+  type Banner = { message: string; tab: TabId };
+  const [error, setError] = useState<Banner | null>(null);
+  const [success, setSuccess] = useState<Banner | null>(null);
 
   // Apply query-string status flags from the SAML callback redirect.
   // All three flags (?success / ?logout / ?error) come from the SP-Initiated
@@ -44,9 +48,15 @@ function App() {
 
     if (!successFlag && !logoutFlag && !errorFlag) return;
 
-    if (successFlag) setSuccess('Successfully authenticated with SAML!');
-    else if (logoutFlag) setSuccess('Successfully logged out');
-    else if (errorFlag) setError(decodeURIComponent(errorFlag));
+    // Origin tab is hardcoded to 'sp-initiated' (the tab replaceTab is moving
+    // to) — capturing the *current* `tab` here would race with replaceTab and
+    // trigger the auto-clear effect on the next render.
+    if (successFlag)
+      setSuccess({ message: 'Successfully authenticated with SAML!', tab: 'sp-initiated' });
+    else if (logoutFlag)
+      setSuccess({ message: 'Successfully logged out', tab: 'sp-initiated' });
+    else if (errorFlag)
+      setError({ message: decodeURIComponent(errorFlag), tab: 'sp-initiated' });
 
     // `replaceTab` strips the query string AND points the hash at the
     // SP-Initiated tab in one swap. Using replace (not push) means hitting
@@ -75,21 +85,27 @@ function App() {
     try {
       await clearMessages();
       setMessages(EMPTY_STORE);
-      setSuccess('Messages cleared');
+      setSuccess({ message: 'Messages cleared', tab });
     } catch {
-      setError('Failed to clear messages');
+      setError({ message: 'Failed to clear messages', tab });
     }
   };
 
   const handleConfigUpdate = async (newConfig: ConfigUpdate) => {
     try {
       await updateConfig(newConfig);
-      setSuccess('Configuration updated successfully');
+      setSuccess({ message: 'Configuration updated successfully', tab });
       void refetch();
     } catch {
-      setError('Failed to update configuration');
+      setError({ message: 'Failed to update configuration', tab });
     }
   };
+
+  // Drop a banner when the user navigates away from the tab it was raised on.
+  useEffect(() => {
+    if (success && success.tab !== tab) setSuccess(null);
+    if (error && error.tab !== tab) setError(null);
+  }, [tab, success, error]);
 
   if (loading) {
     return (
@@ -129,10 +145,10 @@ function App() {
         {error && (
           <AlertBanner
             variant="error"
-            message={error}
+            message={error.message}
             onDismiss={() => setError(null)}
             action={
-              totalMessages > 0
+              totalMessages > 0 && tab !== 'inspector'
                 ? { label: 'View captured messages →', onClick: () => navigate('inspector') }
                 : undefined
             }
@@ -141,10 +157,10 @@ function App() {
         {success && (
           <AlertBanner
             variant="success"
-            message={success}
+            message={success.message}
             onDismiss={() => setSuccess(null)}
             action={
-              totalMessages > 0
+              totalMessages > 0 && tab !== 'inspector'
                 ? { label: 'View captured messages →', onClick: () => navigate('inspector') }
                 : undefined
             }
