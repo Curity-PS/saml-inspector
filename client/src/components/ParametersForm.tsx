@@ -57,23 +57,17 @@ export function ParametersForm({ form, onChange, onSubmit, submitting }: Paramet
           onChange={(v) => onChange('scope', v)}
         />
       </div>
-      <div className="flex items-center gap-4 mt-3 text-sm">
-        <label className="inline-flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.signAssertion !== false}
-            onChange={(e) => onChange('signAssertion', e.target.checked)}
-          />
-          Sign assertion
-        </label>
-        <label className="inline-flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.signResponse !== false}
-            onChange={(e) => onChange('signResponse', e.target.checked)}
-          />
-          Sign response
-        </label>
+      <div className="flex items-center gap-6 mt-4 text-sm">
+        <Toggle
+          label="Sign assertion"
+          checked={form.signAssertion !== false}
+          onChange={(v) => onChange('signAssertion', v)}
+        />
+        <Toggle
+          label="Sign response"
+          checked={form.signResponse !== false}
+          onChange={(v) => onChange('signResponse', v)}
+        />
       </div>
       <div className="flex items-center justify-center mt-5">
         <Button size="lg" onClick={onSubmit} disabled={submitting} className="px-8">
@@ -98,5 +92,33 @@ function FormField({ label, value, type, onChange }: FormFieldProps) {
       <Label className="text-xs">{label}</Label>
       <Input type={type} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
+  );
+}
+
+interface ToggleProps {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}
+
+function Toggle({ label, checked, onChange }: ToggleProps) {
+  return (
+    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        className="peer sr-only"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span
+        className="relative inline-block h-5 w-9 rounded-full bg-ink-200 transition-colors
+                   peer-checked:bg-brand-500
+                   peer-focus-visible:ring-2 peer-focus-visible:ring-brand-300 peer-focus-visible:ring-offset-1
+                   after:content-[''] after:absolute after:top-0.5 after:left-0.5
+                   after:h-4 after:w-4 after:rounded-full after:bg-white after:shadow
+                   after:transition-transform peer-checked:after:translate-x-4"
+      />
+      <span className="text-ink-700">{label}</span>
+    </label>
   );
 }
