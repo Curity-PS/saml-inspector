@@ -329,7 +329,7 @@ saml-inspector/
 | `/api/unsolicited/callback` | GET | Registered OAuth `redirect_uri` target (code is captured server-side) |
 
 
-## 🔄 SAML Authentication Flow
+## SAML SP Initiated Flow
 
 ### Overview
 
@@ -458,6 +458,77 @@ Key fields the diagnostic app depends on:
 - `<capabilities><code/></capabilities>` enables the authorization-code grant the app exchanges in Step 3.
 
 </details>
+
+### Overview
+
+The Unsolicited (IdP-Initiated) flow is almost entirely **server-to-server** — once the user clicks the button, SAML Inspector talks to Curity directly across multiple hops. The browser only sees the initial click and the final result.
+
+```
+┌─────────────┐                  ┌──────────────┐                  ┌─────────────┐
+│   Browser   │                  │SAML Inspector│                  │   Curity    │
+│             │                  │(acts as IdP) │                  │  (host SP)  │
+└──────┬──────┘                  └──────┬───────┘                  └──────┬──────┘
+       │                                │                                 │
+       │  1. Click "Send Unsolicited    │                                 │
+       │      Response"                 │                                 │
+       ├───────────────────────────────>│                                 │
+       │                                │                                 │
+       │                                │  2. Build <samlp:Response>      │
+       │                                │     Sign Assertion (RSA-SHA256) │
+       │                                │     Sign Response (covers the   │
+       │                                │       already-signed Assertion) │
+       │                                │                                 │
+       │                                │  3. POST SAMLResponse +         │
+       │                                │     bootstrap form-body params  │
+       │                                │     (serviceProviderId,         │
+       │                                │      client_id) → saml2-sp ACS  │
+       │                                ├────────────────────────────────>│
+       │                                │                                 │
+       │                                │           4. Verify signature,  │
+       │                                │              parse Audience,    │
+       │                                │              create SSO session │
+       │                                │              (Set-Cookie)       │
+       │                                │                                 │
+       │                                │  5. HTML auto-submit form       │
+       │                                │     (POST + CSRF token →        │
+       │                                │      /dev/oauth/authorize)      │
+       │                                │<────────────────────────────────┤
+       │                                │                                 │
+       │                                │  6. Follow the auto-submit form │
+       │                                │     POST (with session cookies  │
+       │                                │      + CSRF token)              │
+       │                                ├────────────────────────────────>│
+       │                                │                                 │
+       │                                │  7. 303 Redirect to             │
+       │                                │     redirect_uri?code=...       │
+       │                                │<────────────────────────────────┤
+       │                                │                                 │
+       │                                │  8. Capture authorization code  │
+       │                                │                                 │
+       │                                │  9. POST /dev/oauth/token       │
+       │                                │     (code + Basic auth with     │
+       │                                │      client_id:client_secret)   │
+       │                                ├────────────────────────────────>│
+       │                                │                                 │
+       │                                │  10. access_token + id_token    │
+       │                                │      + refresh_token (JSON)     │
+       │                                │<────────────────────────────────┤
+       │                                │                                 │
+       │  11. JSON result               │                                 │
+       │      (tokens, decoded id_token │                                 │
+       │       claims, HTTP trace,      │                                 │
+       │       sent XML)                │                                 │
+       │<───────────────────────────────┤                                 │
+       │                                │                                 │
+```
+
+A few non-obvious details captured in the diagram:
+
+- **Step 2 order matters.** The assertion is signed *first*, then the response — the response signature has to cover the canonicalized form of the already-signed assertion. Reversing the order produces a digest mismatch on Curity.
+- **Step 3 form body, not query string.** Curity's `AuthenticationController` gates dispatch to the saml2-sp handler on `serviceProviderId` / `client_id` being present in the form body. Putting them in the URL fails with `400 missing_parameters`.
+- **Step 5 is a POST, not a GET.** Curity returns an HTML auto-submit `<form method="post">` with a hidden CSRF token, not a 302 redirect. SAML Inspector's `followAutoSubmitForm` branches on the method and replays the hidden inputs.
+- **Steps 6–8 server-side cookies.** Session cookies set by Curity in step 4 are tracked by an in-process cookie jar and replayed on every subsequent hop — without them, `/dev/oauth/authorize` can't find the SSO session.
+- **Step 8 the registered redirect URI is never visited by the browser.** It exists so the OAuth client's `redirect_uri` is legitimate, but SAML Inspector intercepts the 303 server-side and reads `?code=…` from the `Location` header directly.
 
 ### How it works
 
