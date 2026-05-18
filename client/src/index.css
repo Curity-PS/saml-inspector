@@ -1,0 +1,159 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Menlo', monospace;
+
+  /* ===== Curity brand palette =====
+     Mirrors curity.io's design tokens. Curity's identity splits into two
+     axes: a cool slate-navy primary (structure, text, dark surfaces) and a
+     warm magenta-pink spot accent (links, CTAs, highlights). Hover states
+     deepen to a purple-magenta (#87148b) — Curity uses this for link-hover
+     on their own site.
+     Source: curity.io stylesheet CSS variables (--color-primary,
+     --color-spot, --color-link, --color-link-hover, --color-grey-subtle). */
+
+  /* Brand accent — magenta-pink, deepening to purple-magenta */
+  --color-brand-50: #fdf2f9;
+  --color-brand-100: #fbe4f3;
+  --color-brand-200: #f7c7e6;
+  --color-brand-300: #f099d1;
+  --color-brand-400: #e673b8;
+  --color-brand-500: #d859a1;   /* Curity --color-spot / --color-link */
+  --color-brand-600: #c23b87;
+  --color-brand-700: #a4256c;
+  --color-brand-800: #87148b;   /* Curity --color-link-hover */
+  --color-brand-900: #5c1463;
+  --color-brand-950: #380d40;
+
+  /* Ink — Curity's cool slate-navy. Used for headings, body text, dark
+     panels. Pure black is intentionally avoided. */
+  --color-ink-50: #f4f5f7;
+  --color-ink-100: #e6e8ed;
+  --color-ink-200: #c8ccd5;
+  --color-ink-300: #a0a7b6;
+  --color-ink-400: #7e89a8;     /* Curity --color-primary-light */
+  --color-ink-500: #4d556a;     /* Curity --color-primary */
+  --color-ink-600: #3c4764;     /* Curity --color-primary-medium */
+  --color-ink-700: #2f3851;
+  --color-ink-800: #262c3d;     /* Curity --color-primary-dark / heading */
+  --color-ink-900: #1a1f2d;
+
+  /* Surface — warm off-whites pulled from --color-grey-subtle. */
+  --color-surface: #f6f6f6;
+  --color-surface-elevated: #ffffff;
+  --color-surface-muted: #fafafa;
+  --color-surface-strong: #ededed;
+
+  /* Hairline borders — cool gray with a hint of slate. */
+  --color-hairline: #e4e6ec;
+  --color-hairline-strong: #cfd7df;
+
+  /* XML syntax — keep stable; attr uses the brand accent so code samples
+     stay on-brand without competing with chrome. */
+  --color-xml-bracket: #737373;
+  --color-xml-tag: #62818f;     /* Curity --color-info */
+  --color-xml-attr: #c23b87;    /* brand-600 — slightly deeper than spot for legibility on white */
+  --color-xml-value: #4aa69e;   /* Curity --color-resources-develop (teal) */
+  --color-xml-text: #4d4d4d;    /* Curity --color-paragraphs */
+
+  --animate-fade-in: fade-in 0.3s ease-out both;
+  --animate-slide-up: slide-up 0.3s ease-out both;
+  --animate-slide-in-right: slide-in-right 0.2s ease-out both;
+  --animate-fade-in-fast: fade-in 0.15s ease-out both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ===== Base =====
+   Ambient washes — two soft radial gradients give the page subtle depth.
+   The magenta wash is intentionally faint so the UI stays calm and the
+   accent color reads as a highlight, not as a tint over everything. */
+body {
+  font-family: var(--font-sans);
+  color: #262c3d;
+  background-color: var(--color-surface);
+  background-image:
+    radial-gradient(900px 380px at 78% 4%, rgba(216, 89, 161, 0.10), transparent 65%),
+    radial-gradient(900px 500px at -10% 110%, rgba(77, 85, 106, 0.06), transparent 60%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+}
+
+code, pre, .font-mono {
+  font-family: var(--font-mono);
+}
+
+/* ===== XML Syntax Highlighting ===== */
+.xml-bracket { color: var(--color-xml-bracket); }
+.xml-tag { color: var(--color-xml-tag); font-weight: 500; }
+.xml-attr { color: var(--color-xml-attr); }
+.xml-value { color: var(--color-xml-value); }
+.xml-text { color: var(--color-xml-text); }
+
+/* ===== Brand utilities ===== */
+
+/* Soft, premium glow for primary CTAs and brand marks. Tight inner shadow
+   for definition + diffuse magenta shadow for ambient bloom. */
+.brand-glow {
+  box-shadow:
+    0 1px 2px rgba(38, 44, 61, 0.10),
+    0 8px 24px -8px rgba(216, 89, 161, 0.50);
+}
+.brand-glow-sm {
+  box-shadow:
+    0 1px 2px rgba(38, 44, 61, 0.08),
+    0 4px 14px -6px rgba(216, 89, 161, 0.40);
+}
+
+/* Hairline gradient divider — used under the header. */
+.brand-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(216, 89, 161, 0.35) 25%,
+    rgba(135, 20, 139, 0.35) 75%,
+    transparent 100%
+  );
+}
+
+/* Elevated card surface — cool, low-spread shadow. */
+.card-elevated {
+  box-shadow:
+    0 1px 2px rgba(38, 44, 61, 0.04),
+    0 8px 24px -16px rgba(38, 44, 61, 0.14);
+}
+
+/* ===== Loading Animation ===== */
+.loading-dot {
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.loading-dot:nth-child(2) { animation-delay: 0.2s; }
+.loading-dot:nth-child(3) { animation-delay: 0.4s; }
+
+/* ===== Scrollbar ===== */
+.custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: var(--color-hairline-strong); border-radius: 3px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--color-brand-500); }
