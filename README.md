@@ -22,17 +22,11 @@ SAML Inspector is a diagnostic web application for testing and debugging SAML 2.
 
 ### 1. Install Dependencies
 
-Install root dependencies:
 ```bash
 npm install
 ```
 
-Install client dependencies:
-```bash
-cd client
-npm install
-cd ..
-```
+This installs both the server and client dependencies — the root `postinstall` script automatically runs `npm install` inside `client/`.
 
 ### 2. Configure Environment Variables
 

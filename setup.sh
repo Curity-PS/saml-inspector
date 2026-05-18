@@ -13,30 +13,17 @@ fi
 echo "✅ Node.js version: $(node --version)"
 echo ""
 
-# Install root dependencies
-echo "📦 Installing server dependencies..."
+# Install dependencies — root install cascades into client/ via the
+# postinstall hook in package.json, so one `npm install` covers both.
+echo "📦 Installing dependencies (server + client)..."
 npm install
 
 if [ $? -ne 0 ]; then
-    echo "❌ Failed to install server dependencies"
+    echo "❌ Failed to install dependencies"
     exit 1
 fi
 
-echo "✅ Server dependencies installed"
-echo ""
-
-# Install client dependencies
-echo "📦 Installing client dependencies..."
-cd client
-npm install
-
-if [ $? -ne 0 ]; then
-    echo "❌ Failed to install client dependencies"
-    exit 1
-fi
-
-cd ..
-echo "✅ Client dependencies installed"
+echo "✅ Dependencies installed"
 echo ""
 
 # Create .env file if it doesn't exist

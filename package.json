@@ -4,6 +4,7 @@
   "description": "SAML Inspector — a diagnostic web app for SAML integration with Curity Identity Server",
   "main": "server/index.js",
   "scripts": {
+    "postinstall": "npm install --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "nodemon --watch server --ext js,ts,json --exec \"tsx server/index.ts\"",
     "client": "cd client && npm run dev",
