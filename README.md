@@ -94,18 +94,6 @@ Start both the backend server and React frontend:
 npm run dev
 ```
 
-Or run them separately:
-
-**Terminal 1 - Backend:**
-```bash
-npm run server
-```
-
-**Terminal 2 - Frontend:**
-```bash
-npm run client
-```
-
 The application will be available at:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:3001
@@ -124,7 +112,66 @@ npm start              # Run the compiled production server
 
 ## Curity Identity Server Configuration
 
-Refer to [SAML IDP configuration](https://curity.io/docs/identity-server/profiles/saml-idp-profile/) for Curity SAML IDP setup.
+SAML Inspector talks to a Curity Identity Server in two different roles, one per flow, and each needs its own piece of Curity-side config:
+
+| Flow | What you register on Curity | Where |
+|---|---|---|
+| **SP-Initiated** | A SAML 2 *Service Provider* on the `saml-idp` profile — Curity acts as the IdP, this app is the SP. | Reference XML below. |
+| **Unsolicited** | A SAML 2 *Authenticator* (`saml2-sp`) trust on the IdP signing cert, plus an OAuth *client* with our redirect URI. | See [Reference OAuth client config (XML)](#reference-oauth-client-config-xml) further down. |
+
+For background, see [Curity's SAML IDP profile docs](https://curity.io/docs/identity-server/profiles/saml-idp-profile/).
+
+### Reference SAML SP config (XML)
+
+Minimal `service-provider` definition for the **SP-Initiated** flow.
+
+<details>
+<summary>Click to expand <code>service-provider</code> XML</summary>
+
+```xml
+<config xmlns="http://tail-f.com/ns/config/1.0">
+  <profiles xmlns="https://curity.se/ns/conf/base">
+    <profile>
+      <id>saml-idp</id>
+      <type xmlns:si="https://curity.se/ns/conf/profile/saml-idp">si:saml-idp-service</type>
+      <settings>
+        <saml-idp-service xmlns="https://curity.se/ns/conf/profile/saml-idp">
+          <service-providers>
+            <service-provider>
+              <id>http://localhost:3001/saml/metadata</id>
+              <assertion>
+                <audience>http://localhost:3001/saml/metadata</audience>
+              </assertion>
+              <request-bindings>
+                <redirect/>
+                <post/>
+              </request-bindings>
+              <assertion-consumer-service>
+                <index>1</index>
+                <url>http://localhost:3001/saml/callback</url>
+                <protocol-binding>urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST</protocol-binding>
+              </assertion-consumer-service>
+              <user-authentication>
+                <allowed-authenticators>username</allowed-authenticators>
+                <force-authn>true</force-authn>
+              </user-authentication>
+            </service-provider>
+          </service-providers>
+        </saml-idp-service>
+      </settings>
+    </profile>
+  </profiles>
+</config>
+```
+
+Key fields and their `.env` mappings:
+
+- `<service-provider><id>` and `<assertion><audience>` must both equal `SAML_SP_ISSUER` (default `http://localhost:3001/saml/metadata`).
+- `<assertion-consumer-service><url>` must equal `SAML_SP_CALLBACK_URL` (default `http://localhost:3001/saml/callback`).
+- `<allowed-authenticators>` names the Curity authenticator(s) end users will sign in with — `username` is the default; swap in whatever you have configured.
+- `<force-authn>true</force-authn>` makes Curity always show the login screen — convenient for testing different users; remove if you want SSO behavior.
+
+</details>
 
 ## Usage
 
@@ -330,38 +377,6 @@ saml-inspector/
        │                                │                                 │
 ```
 
-### Logout Flow
-
-```
-┌─────────────┐                  ┌──────────────┐                  ┌─────────────┐
-│   Browser   │                  │ Diagnostic   │                  │   Curity    │
-│             │                  │   Tool (SP)  │                  │    (IDP)    │
-└──────┬──────┘                  └──────┬───────┘                  └──────┬──────┘
-       │                                │                                 │
-       │  1. Click Sign Out             │                                 │
-       ├───────────────────────────────>│                                 │
-       │                                │                                 │
-       │                                │  2. Destroy local session       │
-       │                                │                                 │
-       │  3. Redirect to IDP logout     │                                 │
-       │<───────────────────────────────┤                                 │
-       │                                │                                 │
-       │  4. GET /logout?redirect_uri=...                                 │
-       ├─────────────────────────────────────────────────────────────────>│
-       │                                │                                 │
-       │                                │     5. Clear IDP session        │
-       │                                │                                 │
-       │  6. Redirect to /saml/logout/callback                           │
-       │<─────────────────────────────────────────────────────────────────┤
-       │                                │                                 │
-       │  7. GET /saml/logout/callback  │                                 │
-       ├───────────────────────────────>│                                 │
-       │                                │                                 │
-       │  8. Redirect to dashboard      │                                 │
-       │<───────────────────────────────┤                                 │
-       │                                │                                 │
-```
-
 ### Detailed Login Steps
 
 1. **User Initiates Login**: User clicks "Sign In with SAML" button
@@ -378,7 +393,7 @@ saml-inspector/
 - **Digital Signatures**: Curity signs assertions with private key, SP validates with public certificate
 - **Timestamps**: `NotBefore` and `NotOnOrAfter` prevent replay attacks
 - **Audience Restriction**: Ensures assertion is intended for this SP
-- **Subject Confirmation**: Validates recipient and limits validity window
+- **Subject Confirmation**: Validates recipient
 
 ### SAML Bindings
 
@@ -387,7 +402,7 @@ saml-inspector/
 
 ## Unsolicited SAML Response test
 
-The app can additionally hand-craft, sign and POST an **unsolicited SAML 2.0 Response** at a Curity SAML2 authenticator (`saml2-sp`), then drive the OAuth code exchange all the way to tokens — entirely from the UI. This is a JS port of the standalone Python tool at `../saml-unsolicited-tester/` (kept around as a CLI reference; not invoked by this app).
+The app can additionally hand-craft, sign and POST an **unsolicited SAML 2.0 Response** at a Curity SAML2 authenticator (`saml2-sp`), then drive the OAuth code flow, all the way to tokens — entirely from the UI.
 
 ### One-time setup on the host Curity
 
@@ -400,7 +415,7 @@ Commit both changes. From that point on, just hit **Send Unsolicited Response** 
 
 #### Reference OAuth client config (XML)
 
-If you're configuring Curity via `curity-admin import` or want to inspect the exact client shape SAML Inspector expects, here's the minimal `saml2_unsolicited_client` definition. The `<secret>` is a SHA-256 crypt hash of the cleartext `saml2_unsolicited_client` (dev-only — replace if you're using this in any non-local setting).
+Here's the minimal `saml2_unsolicited_client` definition.
 
 <details>
 <summary>Click to expand <code>saml2_unsolicited_client</code> XML</summary>
@@ -460,7 +475,7 @@ The Express backend, on `POST /api/unsolicited/send`:
 ### UI form fields
 
 - **Subject NameID** — assertion subject (e.g. `johndoe`).
-- **Audience** — `<saml:Audience>` value. Set to a deliberately wrong value to demonstrate the audience-validation gap in Curity's SAML2 authenticator (parsed but not validated).
+- **Audience** — `<saml:Audience>` value. 
 - **OAuth client_id / client_secret / redirect_uri / scope** — used for the OAuth code exchange. Defaults are pre-filled.
 - **Sign assertion / Sign response** — checkboxes to A/B test which Curity-side validators fire.
 
@@ -471,7 +486,7 @@ See `.env.example` for the full list of `UNSOLICITED_*` variables. Common ones:
 - `UNSOLICITED_ACS_URL` — saml2-sp ACS endpoint.
 - `UNSOLICITED_IDP_ENTITY_ID` — Issuer used in the Response/Assertion.
 - `UNSOLICITED_CLIENT_ID` / `UNSOLICITED_CLIENT_SECRET` / `UNSOLICITED_REDIRECT_URI` / `UNSOLICITED_SCOPE`.
-- `UNSOLICITED_KEY_PATH` / `UNSOLICITED_CERT_PATH` — point at a different keypair (e.g. the Python tester's `keys/test-idp-signing.{key,crt}.pem`) without re-registering anything on the host Curity.
+- `UNSOLICITED_KEY_PATH` / `UNSOLICITED_CERT_PATH` — point at a different keypair.
 
 ### API endpoints
 
