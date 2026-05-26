@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 import * as env from './config/env';
 import { createApp } from './app';
-import { loadIdpMetadata, ensureUnsolicitedKeys } from './config/bootstrap';
+import { loadIdpMetadata, ensureUnsolicitedKeys, ensureSpKeys } from './config/bootstrap';
 import { buildSamlConfig } from './config/samlConfig';
 import { registerSamlStrategy } from './saml/strategy';
 import * as state from './state';
@@ -10,6 +10,7 @@ import * as state from './state';
 async function main(): Promise<void> {
   await loadIdpMetadata();
   ensureUnsolicitedKeys();
+  ensureSpKeys();
 
   const configState = buildSamlConfig();
   state.setSamlConfig(configState.samlConfig, configState.isSamlConfigured);

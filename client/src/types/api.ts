@@ -27,6 +27,7 @@ export interface SamlConfigSnapshot {
   callbackUrl?: string;
   hasCert: boolean;
   identifierFormat: string | null;
+  signAuthnRequests: boolean;
 }
 
 export interface ConfigUpdate {
@@ -34,6 +35,7 @@ export interface ConfigUpdate {
   issuer?: string;
   callbackUrl?: string;
   cert?: string;
+  signAuthnRequests?: boolean;
 }
 
 // ─── /api/parse-metadata ──────────────────────────────────────────────────
@@ -72,6 +74,10 @@ export interface CapturedRequest {
   timestamp: string;
   raw: string;
   decoded: DecodedSamlContent;
+  signed: boolean;
+  sigAlg?: string;
+  signature?: string;
+  relayState?: string;
 }
 
 export interface CapturedResponse {
@@ -79,6 +85,10 @@ export interface CapturedResponse {
   raw: string;
   decoded: DecodedSamlContent;
   source?: 'unsolicited';
+  signed: boolean;
+  assertionSigned: boolean;
+  signatureAlgorithm?: string;
+  digestAlgorithm?: string;
 }
 
 export interface CapturedAssertion {

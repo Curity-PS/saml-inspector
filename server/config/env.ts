@@ -28,3 +28,9 @@ export const SAML_SP_ISSUER: string =
   process.env.SAML_SP_ISSUER || `http://localhost:${PORT}/saml/metadata`;
 export const SAML_SP_CALLBACK_URL: string =
   process.env.SAML_SP_CALLBACK_URL || `http://localhost:${PORT}/saml/callback`;
+
+// SP signing — startup default for the "Sign AuthnRequest" toggle. The UI
+// can flip this at runtime via POST /api/config; this env var only sets the
+// initial state at boot.
+export const SAML_SP_SIGN_AUTHN_REQUESTS: boolean =
+  process.env.SAML_SP_SIGN_AUTHN_REQUESTS === 'true';

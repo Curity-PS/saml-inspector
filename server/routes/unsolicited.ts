@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { readCert } from '../unsolicited/keys';
 import { sendUnsolicited, defaults } from '../unsolicited/handler';
 import * as messageStore from '../saml/messageStore';
+import { extractSignatureInfo } from '../saml/signatureInfo';
 import type { UnsolicitedInput } from '../unsolicited/types';
 
 const router = Router();
@@ -62,7 +63,8 @@ router.post('/send', async (req, res) => {
           timestamp,
           raw: Buffer.from(xml, 'utf8').toString('base64'),
           decoded: { xml, prettified: xml.replace(/></g, '>\n<') },
-          source: 'unsolicited'
+          source: 'unsolicited',
+          ...extractSignatureInfo(xml)
         });
         console.log(`📤 Unsolicited SAML Response built (${xml.length} bytes)`);
       }

@@ -38,6 +38,11 @@ export function registerSamlStrategy({
     console.log(`   Entry Point: ${samlConfig.entryPoint}`);
     console.log(`   Issuer: ${samlConfig.issuer}`);
     console.log(`   Callback URL: ${samlConfig.callbackUrl}`);
+    console.log(
+      `   AuthnRequest signing: ${
+        samlConfig.signAuthnRequests ? 'ON (RSA-SHA256)' : 'off (unsigned)'
+      }`
+    );
     return;
   }
 

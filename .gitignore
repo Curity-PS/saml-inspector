@@ -10,3 +10,4 @@ server/dist/
 .claude/
 .claude/settings.json
 *.pem
+.runtime-config.json

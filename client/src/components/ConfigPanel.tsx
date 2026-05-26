@@ -15,9 +15,12 @@ import {
   Save,
   X,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Signature
 } from 'lucide-react';
+import { CopyButton } from './CopyButton';
 import { parseMetadata as parseMetadataApi } from '../api/config';
+import { apiClient } from '../api/client';
 import type {
   ConfigUpdate,
   MetadataType,
@@ -151,6 +154,10 @@ function ConfigPanel({ config, onUpdate }: ConfigPanelProps) {
                 </Badge>
               )
             }
+          />
+          <SignAuthnRequestToggle
+            enabled={!!config?.signAuthnRequests}
+            onChange={(next) => onUpdate({ signAuthnRequests: next })}
           />
         </CardContent>
       </Card>
@@ -361,6 +368,103 @@ function MetadataTypeButton({
     >
       {children}
     </button>
+  );
+}
+
+interface SignAuthnRequestToggleProps {
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+}
+
+function SignAuthnRequestToggle({ enabled, onChange }: SignAuthnRequestToggleProps) {
+  const [spCertPem, setSpCertPem] = useState<string | null>(null);
+  const [certError, setCertError] = useState<string | null>(null);
+  const [showCert, setShowCert] = useState(false);
+
+  const toggleShowCert = async () => {
+    if (showCert) {
+      setShowCert(false);
+      return;
+    }
+    if (!spCertPem) {
+      try {
+        const res = await apiClient.get<string>('/api/sp-signing-cert', {
+          responseType: 'text',
+          transformResponse: (v) => v
+        });
+        setSpCertPem(res.data);
+        setCertError(null);
+      } catch (e) {
+        const msg = axios.isAxiosError(e)
+          ? (e.response?.data as string | undefined) ?? e.message
+          : 'Failed to load SP signing cert';
+        setCertError(msg);
+        return;
+      }
+    }
+    setShowCert(true);
+  };
+
+  return (
+    <div className="space-y-2 border-t border-hairline pt-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm text-ink-700">
+            <Signature className="h-4 w-4 text-ink-500" />
+            <span>Sign AuthnRequest</span>
+          </div>
+          <p className="text-xs text-ink-400 max-w-md">
+            When ON, the SP-Initiated{' '}
+            <code className="font-mono">&lt;samlp:AuthnRequest&gt;</code> is signed with
+            RSA-SHA256 and sent over <strong>HTTP-POST binding</strong> (signature embedded
+            inside the XML). When OFF, HTTP-Redirect binding is used unsigned. Curity only
+            validates POST-binding signatures, so signing requires POST. Register the SP
+            signing cert on Curity to enable verification.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(!enabled)}
+          className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border border-transparent transition-colors ${
+            enabled ? 'bg-emerald-600' : 'bg-ink-200'
+          }`}
+          role="switch"
+          aria-checked={enabled}
+          aria-label="Sign AuthnRequest"
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
+              enabled ? 'translate-x-5' : 'translate-x-0.5'
+            } self-center`}
+          />
+        </button>
+      </div>
+
+      {enabled && (
+        <div className="rounded-lg border border-hairline bg-surface-muted px-3 py-2 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs text-ink-500">SP signing cert (register on Curity)</span>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="sm" onClick={toggleShowCert}>
+                {showCert ? 'Hide' : 'Show'} PEM
+              </Button>
+              {spCertPem && <CopyButton value={spCertPem} label="Copy PEM" />}
+            </div>
+          </div>
+          {certError && (
+            <div className="flex items-center gap-2 text-xs text-red-700">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              {certError}
+            </div>
+          )}
+          {showCert && spCertPem && (
+            <pre className="font-mono text-[10px] leading-snug bg-white border border-hairline rounded p-2 overflow-x-auto whitespace-pre">
+              {spCertPem}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

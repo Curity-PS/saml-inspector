@@ -3,6 +3,17 @@ import passport from 'passport';
 import { decodeSAML } from '../saml/decode';
 import * as messageStore from '../saml/messageStore';
 import * as env from '../config/env';
+import * as state from '../state';
+import { extractSignatureInfo } from '../saml/signatureInfo';
+
+// passport-saml's getAuthorizeFormAsync emits an HTML auto-submit form whose
+// SAMLRequest hidden input is the base64-encoded (NOT deflated) AuthnRequest
+// XML. For POST binding, signing is embedded as <ds:Signature> inside that
+// XML, so decoded XML alone is enough to see "signed yes/no" in the UI.
+const SAML_REQUEST_INPUT_RE =
+  /<input[^>]*name=["']SAMLRequest["'][^>]*value=["']([^"']+)["']/i;
+const RELAY_STATE_INPUT_RE =
+  /<input[^>]*name=["']RelayState["'][^>]*value=["']([^"']+)["']/i;
 
 const router = Router();
 
@@ -19,6 +30,11 @@ interface SamlInternal {
     relayState: string,
     host: Record<string, unknown>,
     options: Record<string, unknown>
+  ): Promise<string>;
+  getAuthorizeFormAsync(
+    relayState: string,
+    host?: string,
+    options?: Record<string, unknown>
   ): Promise<string>;
 }
 
@@ -40,7 +56,11 @@ router.get('/metadata', (req, res) => {
       res.status(500).type('text/plain').send('SAML strategy not initialized');
       return;
     }
-    const metadata = strategy._saml.generateServiceProviderMetadata(null, null);
+    // When AuthnRequest signing is enabled, advertise the SP signing cert in
+    // the metadata's <KeyDescriptor use="signing"> so Curity can verify it.
+    const samlConfig = state.getSamlConfig();
+    const signingCert = samlConfig?.signAuthnRequests ? samlConfig.publicCert ?? null : null;
+    const metadata = strategy._saml.generateServiceProviderMetadata(null, signingCert);
     res.type('application/xml').send(metadata);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -55,18 +75,52 @@ router.get('/login', async (req: Request, res: Response, next: NextFunction) => 
 
   try {
     const strategy = getSamlStrategy();
-    if (strategy?._saml) {
-      console.log('📤 Generating SAML Request...');
-      const authUrl = await strategy._saml.getAuthorizeUrlAsync('', {}, {});
-      if (authUrl && authUrl.includes('SAMLRequest=')) {
-        const query = authUrl.split('?')[1] ?? '';
-        const urlParams = new URLSearchParams(query);
-        const samlRequest = urlParams.get('SAMLRequest');
+    const samlConfig = state.getSamlConfig();
+    if (strategy?._saml && samlConfig) {
+      if (samlConfig.authnRequestBinding === 'HTTP-POST') {
+        const formHtml = await strategy._saml.getAuthorizeFormAsync('', undefined, {});
+        const samlRequest = SAML_REQUEST_INPUT_RE.exec(formHtml)?.[1];
         if (samlRequest) {
-          console.log('📤 SAML Request captured, decoding...');
-          const decoded = decodeSAML(samlRequest);
-          messageStore.recordRequest({ timestamp, raw: samlRequest, decoded });
-          console.log(`✅ SAML Request stored.`);
+          const decoded = decodeSAML(samlRequest, true);
+          // The signature element may be <Signature> or <ds:Signature> depending
+          // on the producer's namespace prefix; the XMLDSig namespace URI is
+          // the canonical marker.
+          const signed =
+            'xml' in decoded &&
+            decoded.xml.includes('http://www.w3.org/2000/09/xmldsig#');
+          const relayState = RELAY_STATE_INPUT_RE.exec(formHtml)?.[1];
+          messageStore.recordRequest({
+            timestamp,
+            raw: samlRequest,
+            decoded,
+            signed,
+            relayState
+          });
+          console.log(`✅ SAML Request stored (binding=POST, signed=${signed}).`);
+        }
+      } else {
+        const authUrl = await strategy._saml.getAuthorizeUrlAsync('', {}, {});
+        if (authUrl && authUrl.includes('SAMLRequest=')) {
+          const query = authUrl.split('?')[1] ?? '';
+          const urlParams = new URLSearchParams(query);
+          const samlRequest = urlParams.get('SAMLRequest');
+          if (samlRequest) {
+            const decoded = decodeSAML(samlRequest);
+            const sigAlg = urlParams.get('SigAlg') ?? undefined;
+            const signature = urlParams.get('Signature') ?? undefined;
+            const relayState = urlParams.get('RelayState') ?? undefined;
+            const signed = !!sigAlg && !!signature;
+            messageStore.recordRequest({
+              timestamp,
+              raw: samlRequest,
+              decoded,
+              signed,
+              sigAlg,
+              signature,
+              relayState
+            });
+            console.log(`✅ SAML Request stored (binding=Redirect, signed=${signed}).`);
+          }
         }
       }
     }
@@ -98,8 +152,11 @@ router.post('/callback', (req: Request, res: Response, next: NextFunction) => {
   if (samlResponse) {
     console.log('📩 SAML Response received, decoding...');
     const decoded = decodeSAML(samlResponse);
-    messageStore.recordResponse({ timestamp, raw: samlResponse, decoded });
-    console.log(`✅ SAML Response stored.`);
+    const sigInfo = extractSignatureInfo('xml' in decoded ? decoded.xml : undefined);
+    messageStore.recordResponse({ timestamp, raw: samlResponse, decoded, ...sigInfo });
+    console.log(
+      `✅ SAML Response stored (signed=${sigInfo.signed}, assertionSigned=${sigInfo.assertionSigned}).`
+    );
   } else {
     console.log('⚠️  No SAMLResponse in request body');
   }

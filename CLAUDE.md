@@ -26,6 +26,7 @@ server/
 │   └── bootstrap.ts          # loadIdpMetadata + ensureUnsolicitedKeys (startup side effects)
 ├── saml/
 │   ├── strategy.ts           # registerSamlStrategy() (real or stub)
+│   ├── spKeys.ts             # SP-role signing keypair (signs AuthnRequest when toggle ON)
 │   ├── metadata.ts           # parseMetadata (idp|sp overloads) + fetchMetadata
 │   ├── decode.ts             # decodeSAML — base64 + inflate + pretty-print
 │   └── messageStore.ts       # In-memory captured-messages store (requests/responses/assertions)
@@ -47,7 +48,9 @@ server/
 │   └── types.ts              # UnsolicitedInput, UnsolicitedResult (discriminated ok-union)
 ├── types/
 │   └── domain.ts             # Cross-module types (SamlStrategyConfig, CapturedRequest/Response/Assertion, etc.)
-└── keys/                     # Generated IdP signing keypair (gitignored)
+└── keys/                     # Generated keypairs (gitignored). Two distinct keys:
+                              #   sp-signing.{key,crt}.pem  — SP role; signs outbound AuthnRequest (SP-Initiated)
+                              #   idp-signing.{key,crt}.pem — IdP role; signs unsolicited Response (Unsolicited)
 
 client/src/
 ├── App.tsx                   # Tab orchestrator — mounts all tabs, toggles `hidden`

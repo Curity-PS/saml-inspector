@@ -17,7 +17,9 @@ import {
   KeyRound,
   AlertCircle,
   Check,
-  Copy
+  Copy,
+  Signature,
+  ShieldOff
 } from 'lucide-react';
 import { decodeMessage } from '../api/messages';
 import type {
@@ -316,6 +318,29 @@ function CountBadge({ count }: { count: number }) {
   );
 }
 
+function ParamRow({
+  label,
+  value,
+  truncate = false
+}: {
+  label: string;
+  value: string | undefined;
+  truncate?: boolean;
+}) {
+  if (!value) return null;
+  return (
+    <div className="flex gap-2">
+      <span className="text-emerald-700 font-mono shrink-0 min-w-[5rem]">{label}:</span>
+      <span
+        className={`font-mono text-ink-700 break-all ${truncate ? 'line-clamp-1' : ''}`}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 interface MessageListProps {
   items: Array<CapturedRequest | CapturedResponse> | undefined;
   labelPrefix: string;
@@ -342,8 +367,14 @@ function MessageList({
   return (
     <div className="space-y-2">
       {items.map((msg, index) => {
-        const isUnsolicited =
-          'source' in msg && (msg as CapturedResponse).source === 'unsolicited';
+        const isResponse = 'assertionSigned' in msg;
+        const responseMsg = isResponse ? (msg as CapturedResponse) : null;
+        const isUnsolicited = responseMsg?.source === 'unsolicited';
+        // CapturedRequest also has `signed`, but only CapturedResponse has
+        // `assertionSigned` — use the latter to disambiguate the union.
+        const requestMsg =
+          !isResponse && 'signed' in msg ? (msg as CapturedRequest) : null;
+        const signedMsg = requestMsg ?? responseMsg;
         return (
           <div key={index} className="border border-hairline rounded-lg overflow-hidden">
             <button
@@ -362,6 +393,24 @@ function MessageList({
                     SP-Initiated
                   </Badge>
                 )}
+                {signedMsg &&
+                  (signedMsg.signed ? (
+                    <Badge variant="success" className="text-[10px] py-0 gap-1">
+                      <Signature className="h-3 w-3" />
+                      Signed
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] py-0 gap-1">
+                      <ShieldOff className="h-3 w-3" />
+                      Unsigned
+                    </Badge>
+                  ))}
+                {responseMsg?.assertionSigned && (
+                  <Badge variant="success" className="text-[10px] py-0 gap-1">
+                    <Signature className="h-3 w-3" />
+                    Assertion signed
+                  </Badge>
+                )}
               </span>
               <div className="flex items-center gap-3">
                 <span className="text-xs font-mono text-ink-400">
@@ -376,8 +425,48 @@ function MessageList({
             </button>
 
             {expandedIndex === index && (
-              <div className="p-4 animate-fade-in">
-                <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider mb-3">
+              <div className="p-4 animate-fade-in space-y-3">
+                {requestMsg && requestMsg.signed && requestMsg.sigAlg && (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs space-y-1">
+                    <div className="font-semibold text-emerald-800 uppercase tracking-wider">
+                      Redirect-binding signature (URL params)
+                    </div>
+                    <ParamRow label="SigAlg" value={requestMsg.sigAlg} />
+                    <ParamRow label="Signature" value={requestMsg.signature} truncate />
+                    {requestMsg.relayState && (
+                      <ParamRow label="RelayState" value={requestMsg.relayState} />
+                    )}
+                  </div>
+                )}
+                {requestMsg && requestMsg.signed && !requestMsg.sigAlg && (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                    POST-binding signature — embedded as{' '}
+                    <code className="font-mono">&lt;ds:Signature&gt;</code> inside the
+                    AuthnRequest XML below.
+                  </div>
+                )}
+                {requestMsg && !requestMsg.signed && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    Request was sent unsigned. Enable "Sign AuthnRequest" in the SP-Initiated
+                    config.
+                  </div>
+                )}
+                {responseMsg && responseMsg.signed && (
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs space-y-1">
+                    <div className="font-semibold text-emerald-800 uppercase tracking-wider">
+                      Signature ({responseMsg.assertionSigned ? 'Assertion' : 'Response'})
+                    </div>
+                    <ParamRow label="SigAlg" value={responseMsg.signatureAlgorithm} />
+                    <ParamRow label="DigestAlg" value={responseMsg.digestAlgorithm} />
+                  </div>
+                )}
+                {responseMsg && !responseMsg.signed && (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                    Response is unsigned — neither the envelope nor the assertion carries a{' '}
+                    <code className="font-mono">&lt;ds:Signature&gt;</code>.
+                  </div>
+                )}
+                <p className="text-xs font-semibold text-ink-400 uppercase tracking-wider">
                   {labelPrefix} XML
                 </p>
                 <XmlBlock xml={msg.decoded?.xml ?? msg.decoded?.prettified} />

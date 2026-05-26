@@ -23,6 +23,18 @@ export interface SamlStrategyConfig {
   forceAuthn: boolean;
   skipRequestCompression: boolean;
   authnRequestBinding: 'HTTP-Redirect' | 'HTTP-POST';
+  // SP signing material. Present only when signAuthnRequests is true —
+  // passport-saml signs outbound AuthnRequest / LogoutRequest iff privateKey
+  // is supplied. For HTTP-Redirect binding the signature is detached on the
+  // URL (SigAlg + Signature query params), not embedded inside the XML.
+  signAuthnRequests: boolean;
+  privateKey?: string;
+  publicCert?: string;
+  signatureAlgorithm?: 'sha256' | 'sha512' | 'sha1';
+  // @node-saml defaults the Reference digest to SHA-1 even when signing is
+  // RSA-SHA256, which Curity rejects under "secure validation enabled". Must
+  // be set explicitly to match the signatureAlgorithm.
+  digestAlgorithm?: 'sha256' | 'sha512' | 'sha1';
 }
 
 export interface SamlConfigState {
@@ -68,6 +80,14 @@ export interface CapturedRequest {
   timestamp: string;
   raw: string;
   decoded: DecodedSaml;
+  // HTTP-Redirect binding params captured from the outbound URL. `signed` is
+  // derived (sigAlg + signature both present). Surfacing these makes it
+  // obvious in the Inspector whether the AuthnRequest was actually signed —
+  // the XML alone can't tell you (signature is detached for this binding).
+  signed: boolean;
+  sigAlg?: string;
+  signature?: string;
+  relayState?: string;
 }
 
 export interface CapturedResponse {
@@ -76,6 +96,11 @@ export interface CapturedResponse {
   decoded: DecodedSaml | { xml: string; prettified: string };
   /** Set on entries created by the unsolicited flow. */
   source?: 'unsolicited';
+  signed: boolean;
+  /** True if the inner <Assertion> carries its own signature. */
+  assertionSigned: boolean;
+  signatureAlgorithm?: string;
+  digestAlgorithm?: string;
 }
 
 export interface CapturedAssertion {

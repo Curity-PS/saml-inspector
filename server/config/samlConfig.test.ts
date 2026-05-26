@@ -18,7 +18,7 @@ interface EnvOverrides {
   PORT?: string;
 }
 
-async function buildWithEnv(env: EnvOverrides) {
+async function buildWithEnv(env: EnvOverrides, signAuthnRequests = false) {
   // Snapshot and replace, then reset modules so config/env.ts re-evaluates.
   const previous = { ...process.env };
   for (const key of Object.keys(env) as Array<keyof EnvOverrides>) {
@@ -28,9 +28,9 @@ async function buildWithEnv(env: EnvOverrides) {
   }
   vi.resetModules();
   const mod = await import('./samlConfig');
-  // Call buildSamlConfig BEFORE restoring env — the function reads env at
-  // call time, not at module init.
-  const result = mod.buildSamlConfig();
+  // Pass signAuthnRequests explicitly so tests are deterministic regardless
+  // of any persisted .runtime-config.json or env vars on the dev machine.
+  const result = mod.buildSamlConfig(signAuthnRequests);
   process.env = previous;
   return result;
 }
@@ -102,5 +102,17 @@ describe('buildSamlConfig', () => {
     expect(state.samlConfig.acceptedClockSkewMs).toBe(-1);
     expect(state.samlConfig.disableRequestedAuthnContext).toBe(true);
     expect(state.samlConfig.requestIdExpirationPeriodMs).toBe(28_800_000);
+  });
+
+  // Curity's IdP only validates AuthnRequest signatures embedded inside the
+  // XML — so signing must force HTTP-POST binding. Locking this in protects
+  // a hard-won debugging insight from accidental regression.
+  it('switches binding to HTTP-POST when signAuthnRequests=true', async () => {
+    const state = await buildWithEnv(
+      { SAML_IDP_ENTRY_POINT: 'https://idp/sso', SAML_IDP_CERT: REAL_CERT },
+      true
+    );
+    expect(state.samlConfig.signAuthnRequests).toBe(true);
+    expect(state.samlConfig.authnRequestBinding).toBe('HTTP-POST');
   });
 });

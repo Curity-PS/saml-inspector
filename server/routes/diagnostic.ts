@@ -4,7 +4,10 @@ import { parseMetadata, type MetadataType } from '../saml/metadata';
 import { headCheck } from '../lib/httpClient';
 import * as messageStore from '../saml/messageStore';
 import * as state from '../state';
-import { PLACEHOLDER_CERT } from '../config/samlConfig';
+import { PLACEHOLDER_CERT, buildSamlConfig } from '../config/samlConfig';
+import { registerSamlStrategy } from '../saml/strategy';
+import { readSpCert } from '../saml/spKeys';
+import * as persisted from '../config/persistedConfig';
 
 const router = Router();
 
@@ -46,7 +49,8 @@ router.get('/config', (req, res) => {
     issuer: samlConfig?.issuer,
     callbackUrl: samlConfig?.callbackUrl,
     hasCert: !!samlConfig?.idpCert && samlConfig.idpCert !== PLACEHOLDER_CERT,
-    identifierFormat: samlConfig?.identifierFormat
+    identifierFormat: samlConfig?.identifierFormat,
+    signAuthnRequests: samlConfig?.signAuthnRequests ?? false
   });
 });
 
@@ -55,6 +59,7 @@ interface ConfigUpdateBody {
   issuer?: string;
   callbackUrl?: string;
   cert?: string;
+  signAuthnRequests?: boolean;
 }
 
 router.post('/config', (req, res) => {
@@ -63,12 +68,40 @@ router.post('/config', (req, res) => {
     res.status(503).json({ error: 'SAML config not initialized' });
     return;
   }
-  const { entryPoint, issuer, callbackUrl, cert } = req.body as ConfigUpdateBody;
-  if (entryPoint) samlConfig.entryPoint = entryPoint;
-  if (issuer) samlConfig.issuer = issuer;
-  if (callbackUrl) samlConfig.callbackUrl = callbackUrl;
-  if (cert) samlConfig.idpCert = cert;
-  res.json({ success: true, config: samlConfig });
+  const { entryPoint, issuer, callbackUrl, cert, signAuthnRequests } =
+    req.body as ConfigUpdateBody;
+
+  if (entryPoint) process.env.SAML_IDP_ENTRY_POINT = entryPoint;
+  if (cert) process.env.SAML_IDP_CERT = cert;
+
+  // signAuthnRequests has to flow through buildSamlConfig + a full strategy
+  // re-registration: passport-saml captures its options at construction time,
+  // so mutating samlConfig in place would not take effect.
+  const nextSign = signAuthnRequests ?? samlConfig.signAuthnRequests;
+  if (typeof signAuthnRequests === 'boolean') {
+    // Persist so the toggle survives server restarts (nodemon, fresh boots).
+    // Without this the UI's toggle and the live state silently desync.
+    persisted.write({ signAuthnRequests });
+  }
+  const next = buildSamlConfig(nextSign);
+
+  if (issuer) next.samlConfig.issuer = issuer;
+  if (callbackUrl) next.samlConfig.callbackUrl = callbackUrl;
+
+  state.setSamlConfig(next.samlConfig, next.isSamlConfigured);
+  registerSamlStrategy(next);
+
+  res.json({
+    success: true,
+    config: {
+      entryPoint: next.samlConfig.entryPoint,
+      issuer: next.samlConfig.issuer,
+      callbackUrl: next.samlConfig.callbackUrl,
+      hasCert: !!next.samlConfig.idpCert && next.samlConfig.idpCert !== PLACEHOLDER_CERT,
+      identifierFormat: next.samlConfig.identifierFormat,
+      signAuthnRequests: next.samlConfig.signAuthnRequests
+    }
+  });
 });
 
 interface ParseMetadataBody {
@@ -92,6 +125,18 @@ router.post('/parse-metadata', async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(400).json({ error: message });
+  }
+});
+
+// SP-side signing cert PEM. Distinct from /api/unsolicited/cert (which is
+// the IdP-impersonation cert). Register this one on Curity's SAML2 SP entry
+// as a signature-verification key when AuthnRequest signing is enabled.
+router.get('/sp-signing-cert', (req, res) => {
+  try {
+    res.type('application/x-pem-file').send(readSpCert());
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    res.status(500).json({ error: message });
   }
 });
 
