@@ -28,6 +28,7 @@ export interface SamlConfigSnapshot {
   hasCert: boolean;
   identifierFormat: string | null;
   signAuthnRequests: boolean;
+  authnRequestBinding: 'HTTP-Redirect' | 'HTTP-POST';
 }
 
 export interface ConfigUpdate {
@@ -36,6 +37,7 @@ export interface ConfigUpdate {
   callbackUrl?: string;
   cert?: string;
   signAuthnRequests?: boolean;
+  authnRequestBinding?: 'HTTP-Redirect' | 'HTTP-POST';
 }
 
 // ─── /api/parse-metadata ──────────────────────────────────────────────────

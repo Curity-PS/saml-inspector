@@ -104,15 +104,16 @@ describe('buildSamlConfig', () => {
     expect(state.samlConfig.requestIdExpirationPeriodMs).toBe(28_800_000);
   });
 
-  // Curity's IdP only validates AuthnRequest signatures embedded inside the
-  // XML — so signing must force HTTP-POST binding. Locking this in protects
-  // a hard-won debugging insight from accidental regression.
-  it('switches binding to HTTP-POST when signAuthnRequests=true', async () => {
+  // Binding is independent of signing — passport-saml supports both embedded
+  // (POST) and detached (Redirect) signatures. Default remains Redirect.
+  // Note: Curity's IdP only validates POST-binding signatures; Redirect-
+  // binding signatures are silently ignored (known Curity limitation).
+  it('keeps binding at HTTP-Redirect even when signAuthnRequests=true', async () => {
     const state = await buildWithEnv(
       { SAML_IDP_ENTRY_POINT: 'https://idp/sso', SAML_IDP_CERT: REAL_CERT },
       true
     );
     expect(state.samlConfig.signAuthnRequests).toBe(true);
-    expect(state.samlConfig.authnRequestBinding).toBe('HTTP-POST');
+    expect(state.samlConfig.authnRequestBinding).toBe('HTTP-Redirect');
   });
 });

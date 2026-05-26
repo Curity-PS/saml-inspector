@@ -16,7 +16,8 @@ import {
   X,
   CheckCircle,
   AlertCircle,
-  Signature
+  Signature,
+  ArrowRightLeft
 } from 'lucide-react';
 import { CopyButton } from './CopyButton';
 import { parseMetadata as parseMetadataApi } from '../api/config';
@@ -158,6 +159,11 @@ function ConfigPanel({ config, onUpdate }: ConfigPanelProps) {
           <SignAuthnRequestToggle
             enabled={!!config?.signAuthnRequests}
             onChange={(next) => onUpdate({ signAuthnRequests: next })}
+          />
+          <AuthnRequestBindingToggle
+            binding={config?.authnRequestBinding ?? 'HTTP-Redirect'}
+            signingEnabled={!!config?.signAuthnRequests}
+            onChange={(next) => onUpdate({ authnRequestBinding: next })}
           />
         </CardContent>
       </Card>
@@ -416,10 +422,11 @@ function SignAuthnRequestToggle({ enabled, onChange }: SignAuthnRequestTogglePro
           <p className="text-xs text-ink-400 max-w-md">
             When ON, the SP-Initiated{' '}
             <code className="font-mono">&lt;samlp:AuthnRequest&gt;</code> is signed with
-            RSA-SHA256 and sent over <strong>HTTP-POST binding</strong> (signature embedded
-            inside the XML). When OFF, HTTP-Redirect binding is used unsigned. Curity only
-            validates POST-binding signatures, so signing requires POST. Register the SP
-            signing cert on Curity to enable verification.
+            RSA-SHA256. With <strong>HTTP-POST</strong> binding the signature is
+            XML-embedded (<code>&lt;ds:Signature&gt;</code>). With{' '}
+            <strong>HTTP-Redirect</strong> binding the signature is detached as{' '}
+            <code>SigAlg</code> + <code>Signature</code> query params (per SAML spec).
+            Register the SP signing cert on Curity to enable verification.
           </p>
         </div>
         <button
@@ -464,6 +471,68 @@ function SignAuthnRequestToggle({ enabled, onChange }: SignAuthnRequestTogglePro
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+interface AuthnRequestBindingToggleProps {
+  binding: 'HTTP-Redirect' | 'HTTP-POST';
+  signingEnabled: boolean;
+  onChange: (next: 'HTTP-Redirect' | 'HTTP-POST') => void;
+}
+
+function AuthnRequestBindingToggle({ binding, signingEnabled, onChange }: AuthnRequestBindingToggleProps) {
+  const isPost = binding === 'HTTP-POST';
+
+  return (
+    <div className="space-y-2 border-t border-hairline pt-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm text-ink-700">
+            <ArrowRightLeft className="h-4 w-4 text-ink-500" />
+            <span>AuthnRequest Binding</span>
+          </div>
+          <p className="text-xs text-ink-400 max-w-md">
+            <strong>HTTP-Redirect</strong> encodes the AuthnRequest in the URL
+            query string (deflated + base64). <strong>HTTP-POST</strong> sends it
+            via an auto-submit form (base64, no deflation).
+            {signingEnabled && (
+              <>
+                {' '}
+                <span className="text-amber-600">
+                  ⚠ Curity only validates POST-binding (XML-embedded) signatures.
+                  Redirect-binding signatures (detached SigAlg+Signature query params)
+                  are silently ignored by Curity's RedirectDecoder.
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-hairline overflow-hidden shrink-0">
+          <button
+            type="button"
+            className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
+              !isPost
+                ? 'bg-ink-900 text-white'
+                : 'bg-white text-ink-500 hover:bg-surface-muted'
+            }`}
+            onClick={() => onChange('HTTP-Redirect')}
+          >
+            Redirect
+          </button>
+          <button
+            type="button"
+            className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-hairline cursor-pointer ${
+              isPost
+                ? 'bg-ink-900 text-white'
+                : 'bg-white text-ink-500 hover:bg-surface-muted'
+            }`}
+            onClick={() => onChange('HTTP-POST')}
+          >
+            POST
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

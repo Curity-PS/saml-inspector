@@ -50,7 +50,8 @@ router.get('/config', (req, res) => {
     callbackUrl: samlConfig?.callbackUrl,
     hasCert: !!samlConfig?.idpCert && samlConfig.idpCert !== PLACEHOLDER_CERT,
     identifierFormat: samlConfig?.identifierFormat,
-    signAuthnRequests: samlConfig?.signAuthnRequests ?? false
+    signAuthnRequests: samlConfig?.signAuthnRequests ?? false,
+    authnRequestBinding: samlConfig?.authnRequestBinding ?? 'HTTP-Redirect'
   });
 });
 
@@ -60,6 +61,7 @@ interface ConfigUpdateBody {
   callbackUrl?: string;
   cert?: string;
   signAuthnRequests?: boolean;
+  authnRequestBinding?: 'HTTP-Redirect' | 'HTTP-POST';
 }
 
 router.post('/config', (req, res) => {
@@ -68,7 +70,7 @@ router.post('/config', (req, res) => {
     res.status(503).json({ error: 'SAML config not initialized' });
     return;
   }
-  const { entryPoint, issuer, callbackUrl, cert, signAuthnRequests } =
+  const { entryPoint, issuer, callbackUrl, cert, signAuthnRequests, authnRequestBinding } =
     req.body as ConfigUpdateBody;
 
   if (entryPoint) process.env.SAML_IDP_ENTRY_POINT = entryPoint;
@@ -83,7 +85,10 @@ router.post('/config', (req, res) => {
     // Without this the UI's toggle and the live state silently desync.
     persisted.write({ signAuthnRequests });
   }
-  const next = buildSamlConfig(nextSign);
+  if (authnRequestBinding) {
+    persisted.write({ authnRequestBinding });
+  }
+  const next = buildSamlConfig(nextSign, authnRequestBinding);
 
   if (issuer) next.samlConfig.issuer = issuer;
   if (callbackUrl) next.samlConfig.callbackUrl = callbackUrl;
@@ -99,7 +104,8 @@ router.post('/config', (req, res) => {
       callbackUrl: next.samlConfig.callbackUrl,
       hasCert: !!next.samlConfig.idpCert && next.samlConfig.idpCert !== PLACEHOLDER_CERT,
       identifierFormat: next.samlConfig.identifierFormat,
-      signAuthnRequests: next.samlConfig.signAuthnRequests
+      signAuthnRequests: next.samlConfig.signAuthnRequests,
+      authnRequestBinding: next.samlConfig.authnRequestBinding
     }
   });
 });

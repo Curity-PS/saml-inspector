@@ -34,13 +34,20 @@ export const PLACEHOLDER_CERT =
  * — bootstrap may have just populated them from an IdP metadata URL.
  */
 export function buildSamlConfig(
-  signAuthnRequests = persisted.read().signAuthnRequests ?? env.SAML_SP_SIGN_AUTHN_REQUESTS
+  signAuthnRequests = persisted.read().signAuthnRequests ?? env.SAML_SP_SIGN_AUTHN_REQUESTS,
+  authnRequestBinding?: 'HTTP-Redirect' | 'HTTP-POST'
 ): SamlConfigState {
   const entryPoint = process.env.SAML_IDP_ENTRY_POINT;
   const cert = process.env.SAML_IDP_CERT;
   const skipCertValidation = env.SAML_IDP_SKIP_CERT_VALIDATION;
   const hasCert = !!(cert && cert.length > 50);
   const isSamlConfigured = !!(entryPoint && (hasCert || skipCertValidation));
+
+  // Resolve binding: honour explicit param, persisted preference, or fall
+  // back to Redirect. Binding is independent of signing — passport-saml
+  // supports both embedded (POST) and detached (Redirect) signatures.
+  const resolvedBinding: 'HTTP-Redirect' | 'HTTP-POST' =
+    authnRequestBinding ?? persisted.read().authnRequestBinding ?? 'HTTP-Redirect';
 
   const samlConfig: SamlStrategyConfig = {
     entryPoint: entryPoint || 'https://not-configured.example.com/saml',
@@ -55,19 +62,17 @@ export function buildSamlConfig(
     acceptedClockSkewMs: -1,
     disableRequestedAuthnContext: true,
     forceAuthn: false,
+    // Binding choice: user-controlled, independent of signing. passport-saml
+    // signs differently per binding — POST embeds <ds:Signature> inside XML;
+    // Redirect uses detached SigAlg+Signature query params. Note: Curity's
+    // SAML IdP only validates embedded (POST) signatures; Redirect-binding
+    // signatures are silently ignored by Curity's RedirectDecoder.
+    authnRequestBinding: resolvedBinding,
     // HTTP-POST binding must not deflate (SAML spec) — the request body is
     // raw XML, base64-encoded. @node-saml deflates by default for both
     // bindings, so we set skipRequestCompression=true when using POST.
     // For Redirect, deflation is required (URL length limits).
-    skipRequestCompression: signAuthnRequests,
-    // Binding choice is gated on signing: Curity's SAML IdP only validates
-    // the AuthnRequest signature when it is XML-embedded as <ds:Signature>
-    // inside the request (HTTP-POST binding). With HTTP-Redirect binding the
-    // signature is detached on the URL query string (SigAlg + Signature) and
-    // Curity's RedirectDecoder drops those params — the signature never even
-    // reaches its validator, and the request appears unsigned to the IdP.
-    // So: signed → POST; unsigned → keep Redirect (smaller URL, no auto-submit).
-    authnRequestBinding: signAuthnRequests ? 'HTTP-POST' : 'HTTP-Redirect',
+    skipRequestCompression: resolvedBinding === 'HTTP-POST',
     signAuthnRequests
   };
 

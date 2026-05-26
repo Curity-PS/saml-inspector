@@ -14,6 +14,7 @@ import * as path from 'node:path';
 
 export interface PersistedConfig {
   signAuthnRequests?: boolean;
+  authnRequestBinding?: 'HTTP-Redirect' | 'HTTP-POST';
 }
 
 // Sits at the project root next to .env. Path is intentionally fixed
