@@ -508,30 +508,34 @@ function AuthnRequestBindingToggle({ binding, signingEnabled, onChange }: AuthnR
             )}
           </p>
         </div>
-        <div className="flex rounded-lg border border-hairline overflow-hidden shrink-0">
-          <button
-            type="button"
-            className={`px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
-              !isPost
-                ? 'bg-ink-900 text-white'
-                : 'bg-white text-ink-500 hover:bg-surface-muted'
+        <button
+          type="button"
+          onClick={() => onChange(isPost ? 'HTTP-Redirect' : 'HTTP-POST')}
+          className="relative inline-flex h-8 w-40 shrink-0 cursor-pointer rounded-full bg-ink-100 border border-hairline transition-colors"
+          role="switch"
+          aria-checked={isPost}
+          aria-label="AuthnRequest Binding"
+        >
+          <span
+            className={`absolute inset-y-0.5 w-[4.75rem] rounded-full bg-emerald-600 shadow transition-transform ${
+              isPost ? 'translate-x-[4.75rem]' : 'translate-x-0.5'
             }`}
-            onClick={() => onChange('HTTP-Redirect')}
+          />
+          <span
+            className={`absolute inset-y-0 left-0 w-[5rem] flex items-center justify-center text-[11px] font-semibold transition-colors ${
+              !isPost ? 'text-white' : 'text-ink-400'
+            }`}
           >
             Redirect
-          </button>
-          <button
-            type="button"
-            className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-hairline cursor-pointer ${
-              isPost
-                ? 'bg-ink-900 text-white'
-                : 'bg-white text-ink-500 hover:bg-surface-muted'
+          </span>
+          <span
+            className={`absolute inset-y-0 right-0 w-[5rem] flex items-center justify-center text-[11px] font-semibold transition-colors ${
+              isPost ? 'text-white' : 'text-ink-400'
             }`}
-            onClick={() => onChange('HTTP-POST')}
           >
             POST
-          </button>
-        </div>
+          </span>
+        </button>
       </div>
     </div>
   );

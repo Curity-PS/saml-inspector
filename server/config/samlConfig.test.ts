@@ -18,7 +18,7 @@ interface EnvOverrides {
   PORT?: string;
 }
 
-async function buildWithEnv(env: EnvOverrides, signAuthnRequests = false) {
+async function buildWithEnv(env: EnvOverrides, signAuthnRequests = false, authnRequestBinding?: 'HTTP-Redirect' | 'HTTP-POST') {
   // Snapshot and replace, then reset modules so config/env.ts re-evaluates.
   const previous = { ...process.env };
   for (const key of Object.keys(env) as Array<keyof EnvOverrides>) {
@@ -28,9 +28,10 @@ async function buildWithEnv(env: EnvOverrides, signAuthnRequests = false) {
   }
   vi.resetModules();
   const mod = await import('./samlConfig');
-  // Pass signAuthnRequests explicitly so tests are deterministic regardless
-  // of any persisted .runtime-config.json or env vars on the dev machine.
-  const result = mod.buildSamlConfig(signAuthnRequests);
+  // Pass signAuthnRequests and authnRequestBinding explicitly so tests are
+  // deterministic regardless of any persisted .runtime-config.json on the
+  // dev machine.
+  const result = mod.buildSamlConfig(signAuthnRequests, authnRequestBinding ?? 'HTTP-Redirect');
   process.env = previous;
   return result;
 }
