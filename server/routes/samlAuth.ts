@@ -15,6 +15,28 @@ const SAML_REQUEST_INPUT_RE =
 const RELAY_STATE_INPUT_RE =
   /<input[^>]*name=["']RelayState["'][^>]*value=["']([^"']+)["']/i;
 
+// Regex to extract StatusCode and StatusMessage from a SAML Response XML.
+// Used to surface the IdP's actual error when passport-saml's validation
+// obscures it with a generic library error (e.g. "InResponseTo is missing").
+const STATUS_CODE_RE = /StatusCode[^>]*Value=["']([^"']+)["']/;
+const STATUS_MESSAGE_RE = /StatusMessage[^<]*>([^<]+)</;
+
+/**
+ * Attempt to extract a meaningful error from a SAML Response's Status element.
+ * Returns null if the response indicates success or cannot be parsed.
+ */
+function extractSamlStatusError(samlResponseB64: string): string | null {
+  try {
+    const xml = Buffer.from(samlResponseB64, 'base64').toString();
+    const statusCode = STATUS_CODE_RE.exec(xml)?.[1];
+    if (!statusCode || statusCode.endsWith(':Success')) return null;
+    const statusMessage = STATUS_MESSAGE_RE.exec(xml)?.[1]?.trim();
+    return statusMessage || `IdP returned status: ${statusCode.split(':').pop()}`;
+  } catch {
+    return null;
+  }
+}
+
 const router = Router();
 
 /**
@@ -164,7 +186,14 @@ router.post('/callback', (req: Request, res: Response, next: NextFunction) => {
   passport.authenticate('saml', (err: Error | null, user?: AuthenticatedUser | false) => {
     if (err) {
       console.error('SAML authentication error:', err);
-      res.redirect(`${env.CLIENT_ORIGIN}/?error=${encodeURIComponent(err.message)}`);
+      // When passport-saml validation fails (e.g. "InResponseTo is missing"),
+      // the actual IdP error may be in the SAML Response's StatusMessage.
+      // Surface that to the user instead of / in addition to the library error.
+      const idpError = samlResponse ? extractSamlStatusError(samlResponse) : null;
+      const displayError = idpError
+        ? `${idpError} (${err.message})`
+        : err.message;
+      res.redirect(`${env.CLIENT_ORIGIN}/?error=${encodeURIComponent(displayError)}`);
       return;
     }
     if (!user) {
